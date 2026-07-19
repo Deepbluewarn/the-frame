@@ -12,7 +12,7 @@ help:
 	@echo "  make dev-clean   - 컨테이너 + 볼륨 삭제 (데이터 날림)"
 	@echo ""
 	@echo "Prod:"
-	@echo "  make prod-up     - 전체 스택 (app+mongo+minio+caddy)"
+	@echo "  make prod-up     - 앱 스택 기동 (Caddy는 외부에서 관리)"
 	@echo "  make prod-down   - 스택 중지"
 	@echo "  make prod-logs   - 전체 로그 follow"
 	@echo "  make prod-restart - app만 재시작 (env 변경 후)"
@@ -53,3 +53,6 @@ mongo-shell:
 
 minio-console:
 	@echo "http://localhost:9001  (dev: minioadmin/minioadmin)"
+
+backup:
+	bash scripts/backup.sh

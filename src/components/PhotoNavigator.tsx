@@ -21,6 +21,29 @@ export default function PhotoNavigator({
         return () => window.removeEventListener('keydown', onKey);
     }, [prevId, nextId, router]);
 
+    // 모바일 스와이프
+    useEffect(() => {
+        let startX = 0, startY = 0;
+        const SWIPE_MIN = 60;
+        const onStart = (e: TouchEvent) => {
+            startX = e.touches[0].clientX;
+            startY = e.touches[0].clientY;
+        };
+        const onEnd = (e: TouchEvent) => {
+            const dx = e.changedTouches[0].clientX - startX;
+            const dy = e.changedTouches[0].clientY - startY;
+            if (Math.abs(dx) < SWIPE_MIN || Math.abs(dx) < Math.abs(dy)) return;
+            if (dx < 0 && nextId) router.push(`/image/${nextId}`);
+            if (dx > 0 && prevId) router.push(`/image/${prevId}`);
+        };
+        window.addEventListener('touchstart', onStart, { passive: true });
+        window.addEventListener('touchend', onEnd, { passive: true });
+        return () => {
+            window.removeEventListener('touchstart', onStart);
+            window.removeEventListener('touchend', onEnd);
+        };
+    }, [prevId, nextId, router]);
+
     return (
         <>
             {/* 이웃 사진 브라우저 캐시 프리로드 */}

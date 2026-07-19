@@ -30,10 +30,13 @@ export async function getImageById(_id: string, admin: boolean) {
     return (await attachUrls(res))[0];
 }
 
-export async function getRecentImages(admin: boolean, limit: number = 20, _id?: string) {
+export async function getRecentImages(admin: boolean, limit: number = 20, _id?: string, orientation?: 'landscape' | 'portrait' | 'square') {
     await dbConnect();
     const stages: PipelineStage[] = [{ $sort: { _id: -1 } }];
-    if (_id) stages.push({ $match: { _id: { $lt: _id } } });
+    const matches: any = {};
+    if (_id) matches._id = { $lt: _id };
+    if (orientation) matches.orientation = orientation;
+    if (Object.keys(matches).length) stages.push({ $match: matches });
     if (limit) stages.push({ $limit: limit });
     return await attachUrls(await Image.aggregate<ImageInterface>(pipeWithVisibility(admin, stages)));
 }

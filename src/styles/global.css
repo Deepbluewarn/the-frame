@@ -10,8 +10,11 @@
 }
 
 @layer base {
-    html, body {
-        @apply bg-white dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 antialiased;
+    html {
+        @apply bg-white dark:bg-neutral-950;
+    }
+    body {
+        @apply bg-white dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 antialiased min-h-screen;
         font-family: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, system-ui, Roboto, "Helvetica Neue", "Segoe UI", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
     }
     a { @apply text-inherit no-underline; }

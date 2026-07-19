@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { isValidObjectId } from 'mongoose';
 import { Metadata } from "next";
 import LikeButton from "@/components/LikeButton";
+import ShareButton from "@/components/ShareButton";
 import PhotoNavigator from "@/components/PhotoNavigator";
 import PhotoZoom from "@/components/PhotoZoom";
 import type { ImageInterface, Exif } from "@/db/models/Image";
@@ -37,11 +38,9 @@ function ExifRow({ label, value }: { label: string; value?: string | number | nu
     );
 }
 
-function ExifBlock({ exif, takenFallback }: { exif?: Exif; takenFallback?: Date }) {
-    const taken = exif?.takenAt || takenFallback;
+function ExifBlock({ exif }: { exif?: Exif }) {
     return (
         <dl className="text-[10px] space-y-1">
-            <ExifRow label="촬영일" value={taken ? new Date(taken).toLocaleString('ko-KR') : undefined} />
             <ExifRow label="카메라" value={exif?.camera} />
             <ExifRow label="렌즈" value={exif?.lens} />
             <ExifRow label="초점거리" value={exif?.focalLength ? `${exif.focalLength}mm` : undefined} />
@@ -85,12 +84,12 @@ export default async function Page({ params }: { params: { imageId: string } }) 
             />
 
             <figure className="flex justify-center max-h-[calc(100vh-8rem)]">
-                <PhotoZoom src={image.url} alt={image.title} width={image.width} height={image.height} />
+                <PhotoZoom src={image.urlMedium || image.url} zoomSrc={image.url} alt={image.title} width={image.width} height={image.height} blurhash={image.blurhash} />
                 <figcaption className="sr-only">{image.title}</figcaption>
             </figure>
 
             <div className="shrink-0 pt-2 grid gap-4 md:grid-cols-[1fr_auto] items-start">
-                <div className="space-y-0.5 min-w-0">
+                <div className="space-y-1 min-w-0">
                     <div className="flex items-center gap-2">
                         <h1 className="text-xs font-medium text-neutral-500 truncate leading-none">{image.title}</h1>
                         <LikeButton
@@ -98,9 +97,13 @@ export default async function Page({ params }: { params: { imageId: string } }) 
                             initialLiked={alreadyLiked}
                             initialCount={image.likeCount ?? 0}
                         />
+                        <ShareButton />
                     </div>
+                    <p className="text-[10px] text-neutral-300">
+                        {new Date(image.exif?.takenAt || image.uploadedAt).toLocaleDateString('ko-KR')}
+                    </p>
                     {image.description && (
-                        <p className="text-[11px] text-neutral-400 line-clamp-1">{image.description}</p>
+                        <p className="text-[11px] text-neutral-400 whitespace-pre-line max-h-16 overflow-y-auto pr-2">{image.description}</p>
                     )}
                     {image.tags?.length > 0 && (
                         <ul className="flex flex-wrap gap-1.5">
@@ -110,7 +113,7 @@ export default async function Page({ params }: { params: { imageId: string } }) 
                         </ul>
                     )}
                 </div>
-                <ExifBlock exif={image.exif} takenFallback={image.uploadedAt} />
+                <ExifBlock exif={image.exif} />
             </div>
         </article>
     );

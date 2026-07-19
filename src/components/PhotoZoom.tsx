@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import Blurhash from './Blurhash';
 
 // 사진의 원본크기와 뷰포트를 비교해 줌 단계를 정한다.
 // step 0 = 뷰포트에 맞추기(fit), 마지막 step = 원본 100%.
@@ -19,15 +20,23 @@ function computeSteps(w: number, h: number, vw: number, vh: number): number[] {
 }
 
 export default function PhotoZoom({
-    src, alt, width, height,
+    src, zoomSrc, alt, width, height, blurhash,
 }: {
-    src: string; alt: string; width: number; height: number;
+    src: string; zoomSrc?: string; alt: string; width: number; height: number; blurhash?: string;
 }) {
+    const zoom = zoomSrc || src;
     const dlgRef = useRef<HTMLDialogElement>(null);
     const imgRef = useRef<HTMLImageElement>(null);
+    const previewRef = useRef<HTMLImageElement>(null);
     const [steps, setSteps] = useState<number[]>([1]);
     const [step, setStep] = useState(0);
+    const [loaded, setLoaded] = useState(false);
     const relRef = useRef({ x: 0.5, y: 0.5 });
+
+    // 하이드레이션 전에 로드 완료된 경우 onLoad가 안 걸림 → 마운트 시 체크
+    useEffect(() => {
+        if (previewRef.current?.complete && previewRef.current?.naturalWidth > 0) setLoaded(true);
+    }, []);
 
     const open = () => {
         const s = computeSteps(width, height, window.innerWidth, window.innerHeight);
@@ -101,13 +110,22 @@ export default function PhotoZoom({
         else setStep(s => s + 1);
     };
 
+    const aspectStyle: React.CSSProperties = { aspectRatio: `${width} / ${height}` };
+
     return (
         <>
-            <img
-                src={src} alt={alt} width={width} height={height}
-                onClick={open}
-                className="max-w-full max-h-full object-contain bg-neutral-50 cursor-zoom-in"
-            />
+            <div className="relative max-w-full max-h-full flex" style={aspectStyle}>
+                {blurhash && !loaded && (
+                    <Blurhash hash={blurhash} className="absolute inset-0 w-full h-full" />
+                )}
+                <img
+                    ref={previewRef}
+                    src={src} alt={alt} width={width} height={height}
+                    onClick={open}
+                    onLoad={() => setLoaded(true)}
+                    className={`max-w-full max-h-full object-contain bg-transparent cursor-zoom-in transition-opacity duration-500 ${loaded ? 'opacity-100' : 'opacity-0'}`}
+                />
+            </div>
             <dialog
                 ref={dlgRef}
                 onClick={onClickDialog}
@@ -116,7 +134,7 @@ export default function PhotoZoom({
             >
                 <img
                     ref={imgRef}
-                    src={src} alt={alt}
+                    src={zoom} alt={alt}
                     width={width} height={height}
                     className="block max-w-none max-h-none select-none origin-top-left"
                     style={{ cursor: step < steps.length - 1 ? 'zoom-in' : 'zoom-out' }}

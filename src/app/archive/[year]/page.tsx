@@ -2,6 +2,7 @@ import { actionGetImagesByYear } from '@/actions/image';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import type { Metadata } from 'next';
+import SafeImg from '@/components/SafeImg';
 
 export const revalidate = 300;
 
@@ -29,7 +30,7 @@ export default async function ArchiveYear({ params }: { params: { year: string }
                     {images.map(img => (
                         <li key={img._id} className="aspect-square overflow-hidden bg-neutral-100 dark:bg-neutral-900">
                             <Link href={`/image/${img._id}`} className="block w-full h-full group">
-                                <img src={img.url} alt={img.title} loading="lazy" className="w-full h-full object-cover transition-opacity duration-300 group-hover:opacity-90" />
+                                <SafeImg src={img.urlThumb || img.url} alt={img.title} loading="lazy" className="w-full h-full object-cover transition-opacity duration-300 group-hover:opacity-90" />
                             </Link>
                         </li>
                     ))}

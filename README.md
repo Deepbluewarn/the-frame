@@ -42,6 +42,5 @@ make dev      # http://localhost:3031
 
 ```bash
 cp .env.prod.example .env.prod
-# 값 채우고 Caddyfile 도메인 수정
 make prod-up
 ```

@@ -6,8 +6,8 @@ services:
     env_file: .env.prod
     environment:
       MONGODB_URI: mongodb://mongo:27017/the-frame
-    expose:
-      - "3000"
+    ports:
+      - "127.0.0.1:3031:3000"   # Caddy가 127.0.0.1:3031 프록시
 
   mongo:
     image: mongo:7
@@ -24,9 +24,9 @@ services:
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
     volumes:
       - minio-data:/data
-    expose:
-      - "9000"
-      - "9001"
+    ports:
+      - "127.0.0.1:9000:9000"   # Caddy가 s3.bluewarn.dev로 프록시
+      - "127.0.0.1:9001:9001"   # 관리자 콘솔
 
   umami-db:
     image: postgres:15-alpine
@@ -46,23 +46,10 @@ services:
       DATABASE_URL: postgresql://umami:${UMAMI_DB_PASSWORD}@umami-db:5432/umami
       DATABASE_TYPE: postgresql
       APP_SECRET: ${UMAMI_APP_SECRET}
-    expose:
-      - "3000"
-
-  caddy:
-    image: caddy:2-alpine
-    restart: unless-stopped
     ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy-data:/data
-      - caddy-config:/config
+      - "127.0.0.1:3040:3000"   # 필요시 Caddy로 노출
 
 volumes:
   mongo-data:
   minio-data:
   umami-db:
-  caddy-data:
-  caddy-config:

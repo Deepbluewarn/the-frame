@@ -1,6 +1,7 @@
 import '../styles/global.css';
 import type { Metadata } from "next";
 import Header from '@/components/Header/Header';
+import ShortcutsHint from '@/components/ShortcutsHint';
 
 export const metadata: Metadata = {
   title: {
@@ -40,6 +41,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <Header />
         <main>{children}</main>
+        <ShortcutsHint />
       </body>
     </html>
   );

@@ -43,9 +43,12 @@ function getOrCreateVisitorId(): string {
     return id;
 }
 
+import type { Orientation } from "@/db/models/Image";
+
 export interface ImagePaginationParams {
     limit?: number;
     last_image_id?: string;
+    orientation?: Orientation;
 }
 
 export async function actionGetImageById(_id: string) {
@@ -53,7 +56,7 @@ export async function actionGetImageById(_id: string) {
 }
 
 export async function actionGetRecentImages(params: ImagePaginationParams) {
-    return await getRecentImages(isAdmin(), params.limit, params.last_image_id);
+    return await getRecentImages(isAdmin(), params.limit, params.last_image_id, params.orientation);
 }
 
 export async function actionGetNextImagesById(_current_id: string, limit?: number) {
@@ -128,7 +131,7 @@ export async function actionGetRandomImageId() {
 export async function actionDeleteImages(imageIds: string[]) {
     assertAdmin();
     const images = await Image.find({ _id: { $in: imageIds } });
-    const s3Keys = images.map(img => img.s3_key);
+    const s3Keys = images.flatMap(img => [img.s3_key, img.s3_key_thumb, img.s3_key_medium].filter(Boolean) as string[]);
     const dbOk = await deleteImages(imageIds);
     const s3Ok = await deleteS3Images(s3Keys);
     return { images_deleted: dbOk, s3_deleted: s3Ok };

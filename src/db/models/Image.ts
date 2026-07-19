@@ -15,12 +15,20 @@ export interface Exif {
     lng?: number;
 }
 
+export type Orientation = 'landscape' | 'portrait' | 'square';
+
 export interface ImageInterface {
     _id: string;
-    url: string;
-    s3_key: string;
+    url: string;         // presign된 원본 URL (조회 시 attachUrls가 세팅)
+    urlThumb?: string;   // 400px wide
+    urlMedium?: string;  // 1200px wide
+    s3_key: string;      // 원본
+    s3_key_thumb?: string;
+    s3_key_medium?: string;
     width: number;
     height: number;
+    orientation: Orientation;
+    blurhash?: string;
     title: string;
     description: string;
     tags: string[];
@@ -49,8 +57,12 @@ export const ImageSchema: Schema = new Schema<ImageInterface, ImageModel>({
     _id: { type: String, default: () => new Types.ObjectId().toString() },
     url: { type: String, default: '' },
     s3_key: { type: String, required: true },
+    s3_key_thumb: { type: String },
+    s3_key_medium: { type: String },
     width: { type: Number, required: true },
     height: { type: Number, required: true },
+    orientation: { type: String, enum: ['landscape', 'portrait', 'square'], default: 'landscape' },
+    blurhash: { type: String },
     title: { type: String, required: true },
     description: { type: String },
     tags: { type: [String], required: true },

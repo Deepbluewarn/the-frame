@@ -7,7 +7,8 @@ export default function Error({ error, reset }: { error: Error & { digest?: stri
     useEffect(() => { console.error(error); }, [error]);
     return (
         <div className="h-[calc(100vh-3.5rem)] flex flex-col items-center justify-center gap-6 text-neutral-500 dark:text-neutral-400">
-            <p className="text-4xl font-light tracking-widest">사진을 불러올 수 없습니다</p>
+            <p className="text-4xl font-light tracking-widest">문제 발생</p>
+            <p className="text-sm">잠시 후 다시 시도해주세요.</p>
             <div className="flex gap-4 text-xs">
                 <button onClick={reset} className="underline hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors">
                     다시 시도
