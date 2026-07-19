@@ -16,6 +16,9 @@ export const metadata: Metadata = {
     locale: 'ko_KR',
   },
   twitter: { card: 'summary_large_image' },
+  verification: {
+    google: 'yX_jsQjMqBCgeVqJtkmv-MOHMnA7MyYOM7Tk0AOXUdk',
+  },
 };
 
 // FOUC 방지: 페인트 전에 저장된 테마 적용
