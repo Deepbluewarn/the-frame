@@ -1,28 +1,117 @@
-import Styles from '@/styles/components/imageDetails.module.css';
-import { Box } from "@mantine/core";
-import { actionGetSurroundingImagesById } from "@/actions/image";
-import ImageDetails from "@/components/ImageDetail/ImageDetail";
+import { actionGetImageById, actionGetSurroundingImagesById, actionHasLiked } from "@/actions/image";
 import { notFound } from 'next/navigation';
 import { isValidObjectId } from 'mongoose';
-import { ImageDetailStoreProvider } from '@/providers/image-detail-store-provider';
+import { Metadata } from "next";
+import LikeButton from "@/components/LikeButton";
+import PhotoNavigator from "@/components/PhotoNavigator";
+import PhotoZoom from "@/components/PhotoZoom";
+import type { ImageInterface, Exif } from "@/db/models/Image";
+
+export const revalidate = 60;
+
+export async function generateMetadata({ params }: { params: { imageId: string } }): Promise<Metadata> {
+    if (!isValidObjectId(params.imageId)) return {};
+    const image = await actionGetImageById(params.imageId);
+    if (!image || image.visibility === 'private') return {};
+    return {
+        title: image.title,
+        description: image.description || image.title,
+        alternates: { canonical: `/image/${params.imageId}` },
+        openGraph: {
+            title: image.title,
+            description: image.description || image.title,
+            images: [{ url: image.url, width: image.width, height: image.height }],
+            type: 'article',
+        },
+        twitter: { card: 'summary_large_image', images: [image.url] },
+    };
+}
+
+function ExifRow({ label, value }: { label: string; value?: string | number | null }) {
+    if (value === undefined || value === null || value === '') return null;
+    return (
+        <div className="flex gap-2">
+            <dt className="w-14 shrink-0 text-neutral-300">{label}</dt>
+            <dd className="text-neutral-400">{value}</dd>
+        </div>
+    );
+}
+
+function ExifBlock({ exif, takenFallback }: { exif?: Exif; takenFallback?: Date }) {
+    const taken = exif?.takenAt || takenFallback;
+    return (
+        <dl className="text-[10px] space-y-1">
+            <ExifRow label="촬영일" value={taken ? new Date(taken).toLocaleString('ko-KR') : undefined} />
+            <ExifRow label="카메라" value={exif?.camera} />
+            <ExifRow label="렌즈" value={exif?.lens} />
+            <ExifRow label="초점거리" value={exif?.focalLength ? `${exif.focalLength}mm` : undefined} />
+            <ExifRow label="조리개" value={exif?.aperture ? `f/${exif.aperture}` : undefined} />
+            <ExifRow label="셔터" value={exif?.shutterSpeed} />
+            <ExifRow label="ISO" value={exif?.iso} />
+        </dl>
+    );
+}
 
 export default async function Page({ params }: { params: { imageId: string } }) {
-    let THUMBNAIL_LIST_RADIUS: number = parseInt(process.env.NEXT_PUBLIC_THUMBNAIL_LIST_RADIUS || '3', 10);
+    if (!isValidObjectId(params.imageId)) notFound();
 
-    // objectId 유효성 확인
-    if (!isValidObjectId(params.imageId)) {
-        notFound()
-    }
+    const image: ImageInterface | undefined = await actionGetImageById(params.imageId);
+    if (!image) notFound();
 
-    const images = await actionGetSurroundingImagesById(params.imageId, THUMBNAIL_LIST_RADIUS + 1);
+    const alreadyLiked = await actionHasLiked(params.imageId);
+    const surrounding = await actionGetSurroundingImagesById(params.imageId, 1);
+    const currIdx = surrounding.findIndex((i: ImageInterface) => i._id === params.imageId);
+    const prev = currIdx > 0 ? surrounding[currIdx - 1] : undefined;
+    const next = currIdx >= 0 && currIdx < surrounding.length - 1 ? surrounding[currIdx + 1] : undefined;
 
-    if (!images || images.length === 0) notFound();
+    const jsonLd = {
+        "@context": "https://schema.org",
+        "@type": "ImageObject",
+        contentUrl: image.url,
+        name: image.title,
+        description: image.description || undefined,
+        width: image.width,
+        height: image.height,
+        uploadDate: image.uploadedAt,
+        datePublished: image.exif?.takenAt || image.uploadedAt,
+    };
 
     return (
-        <ImageDetailStoreProvider value={{ imageId: params.imageId, images }} >
-            <Box className={Styles.container}>
-                <ImageDetails />
-            </Box>
-        </ImageDetailStoreProvider>
-    )
+        <article className="h-[calc(100vh-3.5rem)] max-w-6xl mx-auto px-4 sm:px-6 py-2 flex flex-col justify-center overflow-hidden">
+            <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
+            <PhotoNavigator
+                prevId={prev?._id} nextId={next?._id}
+                prevUrl={prev?.url} nextUrl={next?.url}
+            />
+
+            <figure className="flex justify-center max-h-[calc(100vh-8rem)]">
+                <PhotoZoom src={image.url} alt={image.title} width={image.width} height={image.height} />
+                <figcaption className="sr-only">{image.title}</figcaption>
+            </figure>
+
+            <div className="shrink-0 pt-2 grid gap-4 md:grid-cols-[1fr_auto] items-start">
+                <div className="space-y-0.5 min-w-0">
+                    <div className="flex items-center gap-2">
+                        <h1 className="text-xs font-medium text-neutral-500 truncate leading-none">{image.title}</h1>
+                        <LikeButton
+                            imageId={image._id}
+                            initialLiked={alreadyLiked}
+                            initialCount={image.likeCount ?? 0}
+                        />
+                    </div>
+                    {image.description && (
+                        <p className="text-[11px] text-neutral-400 line-clamp-1">{image.description}</p>
+                    )}
+                    {image.tags?.length > 0 && (
+                        <ul className="flex flex-wrap gap-1.5">
+                            {image.tags.map(t => (
+                                <li key={t} className="text-[10px] text-neutral-300">#{t}</li>
+                            ))}
+                        </ul>
+                    )}
+                </div>
+                <ExifBlock exif={image.exif} takenFallback={image.uploadedAt} />
+            </div>
+        </article>
+    );
 }

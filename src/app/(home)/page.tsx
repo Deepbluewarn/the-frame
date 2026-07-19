@@ -1,14 +1,13 @@
-import { getSession } from '@auth0/nextjs-auth0';
-import LoggedOut from '@/components/LoggedOut';
-import { redirect } from 'next/navigation';
+import HomeGrid from '@/components/HomeGrid';
+import { actionGetRecentImages } from '@/actions/image';
+
+export const revalidate = 60;
 
 export default async function Home() {
-  const session = await getSession();
-  const user = session?.user;
-
-  if (user) {
-    redirect('/explore/public')
-  }
-
-  return <LoggedOut />
+  const initial = await actionGetRecentImages({ limit: 30 });
+  return (
+    <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8">
+      <HomeGrid initial={initial} />
+    </div>
+  );
 }

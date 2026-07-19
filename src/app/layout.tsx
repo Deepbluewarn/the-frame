@@ -1,59 +1,46 @@
-import '../styles/global.css'
-import '@mantine/core/styles.css';
-import '@mantine/dropzone/styles.css';
-import { ColorSchemeScript, MantineProvider } from '@mantine/core';
+import '../styles/global.css';
 import type { Metadata } from "next";
-import { UserProvider } from "@auth0/nextjs-auth0/client";
 import Header from '@/components/Header/Header';
-import HomeStyles from '@/styles/home.module.css'
-import { IconMail, IconBrandGithub } from '@tabler/icons-react';
-import { getSession } from '@auth0/nextjs-auth0';
-import { UserInfoStoreProvider } from '@/providers/userid-store-provider';
-import { actionGetUserIdBySub } from '@/actions/user';
-import NextTopLoader from 'nextjs-toploader';
 
 export const metadata: Metadata = {
-  title: `${process.env.NODE_ENV === 'development' ? '[DEV]' : ''} THE FRAME`,
-  description: "사진 공유 플랫폼 THE FRAME",
+  title: {
+    default: `${process.env.NODE_ENV === 'development' ? '[DEV] ' : ''}THE FRAME`,
+    template: `%s | THE FRAME`,
+  },
+  description: "사진 갤러리 THE FRAME",
+  metadataBase: process.env.SITE_URL ? new URL(process.env.SITE_URL) : undefined,
+  openGraph: {
+    type: 'website',
+    siteName: 'THE FRAME',
+    locale: 'ko_KR',
+  },
+  twitter: { card: 'summary_large_image' },
 };
 
-export default async function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
-  const session = await getSession();
-  const user = session?.user;
-  const userId = await actionGetUserIdBySub(user?.sub);
+// FOUC 방지: 페인트 전에 저장된 테마 적용
+const themeInit = `
+try {
+    const t = localStorage.getItem('theme');
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    if (t === 'dark' || (!t && prefersDark)) document.documentElement.classList.add('dark');
+} catch {}
+`;
 
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  const umamiUrl = process.env.NEXT_PUBLIC_UMAMI_URL;
+  const umamiId = process.env.NEXT_PUBLIC_UMAMI_WEBSITE_ID;
   return (
-    <html lang="ko">
+    <html lang="ko" suppressHydrationWarning>
       <head>
-        <ColorSchemeScript />
+        <script dangerouslySetInnerHTML={{ __html: themeInit }} />
+        {umamiUrl && umamiId && (
+          <script defer src={`${umamiUrl}/script.js`} data-website-id={umamiId} />
+        )}
       </head>
-      <UserInfoStoreProvider value={{ _id: userId || '', sub: user?.sub}}>
-        <UserProvider>
-          <body>
-            <MantineProvider>
-              <Header fixed={true} />
-              <main className={`${HomeStyles.container}`}>
-                {children}
-              </main>
-              <footer className={HomeStyles.footer}>
-                <div>
-                  <p><b>THE FRAME</b></p>
-                </div>
-                <div className={HomeStyles.social_links}>
-                  <ul>
-                    <li><IconMail /></li>
-                    <li><IconBrandGithub /></li>
-                  </ul>
-                </div>
-              </footer>
-            </MantineProvider>
-          </body>
-        </UserProvider>
-      </UserInfoStoreProvider>
+      <body>
+        <Header />
+        <main>{children}</main>
+      </body>
     </html>
   );
 }

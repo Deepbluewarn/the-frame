@@ -1,34 +1,13 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+    output: 'standalone',
     experimental: {
-        serverActions: {
-            allowedOrigins: [
-                'localhost:3001',
-                'wv93m9tn-3001.asse.devtunnels.ms'
-            ]
-        },
-        serverComponentsExternalPackages: [
-            'pino',
-            'pino-pretty'
-        ]
+        serverComponentsExternalPackages: ['pino', 'pino-pretty']
     },
-    webpack: (config, { isServer }) => {
-        if (!isServer) {
-            config.resolve.fallback = {
-                fs: false,
-            };
-        }
-
-        return config;
-    },
+    // ponytail: MinIO presigned URL은 임의 host + 쿼리 파라미터. Next.js <Image> 대신 <img>만 쓰므로 remotePatterns 불필요.
     images: {
-        remotePatterns: [{
-            protocol: 'https',
-            hostname: 'myframe.s3.ap-northeast-2.amazonaws.com',
-            port: '',
-            pathname: '/**',
-        }]
-    }
-}
+        unoptimized: true,
+    },
+};
 
 export default nextConfig;

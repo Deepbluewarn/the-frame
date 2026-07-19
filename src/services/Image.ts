@@ -1,239 +1,96 @@
 'use server'
 
 import dbConnect from "@/db/init";
-import Image, { IComment, ImageInterface, Visibility } from "@/db/models/Image";
-import { HydratedDocument, PipelineStage } from "mongoose";
-import { getUserById, getUserBySub, ownerLookupPipeline } from "./User";
-import User, { IUserInfo, UserInterface } from "@/db/models/User";
-import { getVisibilityPipeline } from "@/utils/service";
+import Image, { ImageInterface, Visibility } from "@/db/models/Image";
+import { PipelineStage } from "mongoose";
 import { SearchResult } from "./types";
-import { DeletedObject, S3, waitUntilObjectNotExists } from "@aws-sdk/client-s3";
+import { DeletedObject } from "@aws-sdk/client-s3";
+import { s3, S3_BUCKET, attachUrls } from "@/utils/s3";
 
-export interface ImageWithOwner extends ImageInterface {
-    ownerDetails: UserInterface;
+// ponytail: viewer 권한은 관리자 아니면 public만. 미들웨어와 auth-wrapper.isAdmin이 게이팅.
+function visibilityMatch(admin: boolean): PipelineStage.Match | null {
+    return admin ? null : { $match: { visibility: 'public' } };
 }
 
-export interface IFollowerListWithImage extends ImageWithOwner{
-    followerImages: ImageInterface[];
+function pipeWithVisibility(admin: boolean, stages: PipelineStage[]): PipelineStage[] {
+    const vis = visibilityMatch(admin);
+    return vis ? [vis, ...stages] : stages;
 }
 
 export async function createImage(image: ImageInterface) {
     await dbConnect();
-    const img: HydratedDocument<ImageInterface> = new Image(image);
-    return img.save();
+    return new Image(image).save();
 }
 
-async function getImage($match: { [key: string]: string }, viewerId?: string) {
+export async function getImageById(_id: string, admin: boolean) {
     await dbConnect();
-
-    return await Image.aggregate<ImageWithOwner>([
-        { $match },
-        ...ownerLookupPipeline,
-        ...getVisibilityPipeline(viewerId),
-    ]);
+    const res = await Image.aggregate<ImageInterface>(
+        pipeWithVisibility(admin, [{ $match: { _id } }])
+    );
+    return (await attachUrls(res))[0];
 }
 
-export async function getImageById(_id: string, viewerId?: string) {
+export async function getRecentImages(admin: boolean, limit: number = 20, _id?: string) {
     await dbConnect();
-
-    return (await getImage({ _id: _id }, viewerId))[0];
+    const stages: PipelineStage[] = [{ $sort: { _id: -1 } }];
+    if (_id) stages.push({ $match: { _id: { $lt: _id } } });
+    if (limit) stages.push({ $limit: limit });
+    return await attachUrls(await Image.aggregate<ImageInterface>(pipeWithVisibility(admin, stages)));
 }
 
-export async function getRecentPublicImages(limit: number = 10, _id?: string, viewerId?: string) {
+export async function getNextImagesById(admin: boolean, _id: string, limit: number = 1) {
     await dbConnect();
-    const pipelines: PipelineStage[] = [
-        ...ownerLookupPipeline,
-        ...getVisibilityPipeline(viewerId),
-        {
-            $sort: {
-                _id: -1
-            }
-        }
-    ];
-
-    if (_id) {
-        pipelines.push({
-            $match: {
-                _id: { $lt: _id },
-            },
-        })
-    }
-
-    if (limit) {
-        pipelines.push({
-            $limit: limit,
-        })
-    }
-    
-    return await Image.aggregate<ImageWithOwner>(pipelines)
+    return await attachUrls(await Image.aggregate<ImageInterface>(pipeWithVisibility(admin, [
+        { $match: { _id: { $gt: _id } } },
+        { $limit: limit },
+    ])));
 }
 
-export async function getNextImagesById({ _id, viewerId, ownerId, limit = 1 }: { _id: string, viewerId?: string, ownerId: string, limit?: number }) {
+export async function getPrevImagesById(admin: boolean, _id: string, limit: number = 1) {
     await dbConnect();
-
-    return await Image.aggregate<ImageWithOwner>([
-        ...ownerLookupPipeline,
-        ...getVisibilityPipeline(viewerId),
-        {
-            $match: {
-                owner: ownerId,
-                _id: { $gt: _id },
-            },
-        }, {
-            $limit: limit
-        },
-
-    ])
+    return await attachUrls(await Image.aggregate<ImageInterface>(pipeWithVisibility(admin, [
+        { $match: { _id: { $lt: _id } } },
+        { $sort: { _id: -1 } },
+        { $limit: limit },
+    ])));
 }
 
-export async function getPrevImagesById({ _id, viewerId, ownerId, limit = 1 }: { _id: string, viewerId?: string, ownerId: string, limit?: number }) {
+export async function getSurroundingImagesById(admin: boolean, imageId: string, radius: number) {
     await dbConnect();
-
-    return await Image.aggregate<ImageWithOwner>([
-        ...ownerLookupPipeline,
-        ...getVisibilityPipeline(viewerId),
-        {
-            $match: {
-                owner: ownerId,
-                _id: { $lt: _id },
-            },
-        },
-        {
-            $sort: { _id: -1 }
-        },
-        {
-            $limit: limit
-        },
-    ])
-}
-
-export async function getSurroundingImagesById(imageId: string, radius: number, ownerId: string, viewerId?: string) {
-    await dbConnect();
-
-    return await Image.aggregate<ImageWithOwner>([
-        ...ownerLookupPipeline,
-        ...getVisibilityPipeline(viewerId),
-        {
-            $match: {
-                owner: ownerId,
-                _id: { $gte: imageId },
-            }
-        },
-        {
-            $sort: { _id: 1 }
-        },
-        {
-            $limit: radius + 1
-        },
+    const visMatch = visibilityMatch(admin);
+    const forwardStages: PipelineStage[] = [];
+    if (visMatch) forwardStages.push(visMatch);
+    forwardStages.push(
+        { $match: { _id: { $gte: imageId } } },
+        { $sort: { _id: 1 } },
+        { $limit: radius + 1 },
         {
             $unionWith: {
                 coll: 'images',
                 pipeline: [
-                    ...ownerLookupPipeline,
-                    ...getVisibilityPipeline(viewerId),
-                    {
-                        $match: { _id: { $lt: imageId }, owner: ownerId }
-                    },
-                    {
-                        $sort: { _id: -1 }
-                    },
-                    {
-                        $limit: radius
-                    }
-                ]
-            }
-        },
-        {
-            $sort: { _id: 1 }
-        },
-    ]);
-}
-
-/**
- * 
- * @param limit 이미지 개수 제한
- * @param userId 이미지의 owner
- * @param lastItemId pagination을 위한 마지막 이미지 문서의 _id
- * @returns ImageWithOwner[]
- */
-export async function getUserImages(userId: string, limit?: number, viewerId?: string, lastItemId?: string) {
-    await dbConnect();
-
-    const pipes: PipelineStage[] = [
-        ...ownerLookupPipeline,
-        ...getVisibilityPipeline(viewerId),
-        {
-            $match: {
-                ...(lastItemId && { _id: { $gt: lastItemId } }),
-                owner: userId,
+                    ...(visMatch ? [visMatch] : []),
+                    { $match: { _id: { $lt: imageId } } },
+                    { $sort: { _id: -1 } },
+                    { $limit: radius },
+                ],
             },
-           
         },
-    ]
-
-    if (typeof limit === 'number') {
-        pipes.push({
-            $limit: limit
-        })
-    }
-
-    return await Image.aggregate<ImageWithOwner>(pipes)
-}
-
-export async function getUserImagesByDate(limit: number = 10, userId: string, viewerId?: string, lastImageDate?: number): Promise<[number, ImageWithOwner[]][]> {
-    await dbConnect();
-
-    const matchStage: PipelineStage.Match = {
-        $match: {
-            owner: userId,
-            ...(lastImageDate && { uploadedAt: { $lt: new Date(lastImageDate) } })
-        }
-    };
-
-    const groupStage: PipelineStage.Group = {
-        $group: {
-            _id: {
-                $dateToString: { format: "%Y-%m-%d", date: "$uploadedAt" }
-            },
-            images: { $push: "$$ROOT" }
-        }
-    };
-
-    const sortStage: PipelineStage.Sort = {
-        $sort: { "_id": -1 }
-    };
-
-    const limitStage: PipelineStage.Limit = {
-        $limit: limit
-    };
-
-    const pipeline = [
-        ...ownerLookupPipeline,
-        ...getVisibilityPipeline(viewerId),
-        matchStage, groupStage, sortStage, limitStage
-    ];
-
-    const result = await Image.aggregate<{_id: string, images: ImageWithOwner[]}>(pipeline);
-
-    return result.map(group => [new Date(group._id).getTime(), group.images]);
+        { $sort: { _id: 1 } },
+    );
+    return await attachUrls(await Image.aggregate<ImageInterface>(forwardStages));
 }
 
 export async function addImageTags(imageId: string, tags: string[]) {
     await dbConnect();
-
     return await Image.updateOne(
         { _id: imageId },
         { $addToSet: { tags: { $each: tags } } }
-    )
+    );
 }
 
 export async function removeImageTag(imageId: string, tag: string) {
     await dbConnect();
-
-    return await Image.updateOne(
-        { _id: imageId },
-        { $pull: { tags: tag } }
-    )
+    return await Image.updateOne({ _id: imageId }, { $pull: { tags: tag } });
 }
 
 export async function updateImagesMetadata(
@@ -241,390 +98,140 @@ export async function updateImagesMetadata(
     visibility?: Visibility,
 ) {
     await dbConnect();
-
     const updateFields: any = {};
     if (title) updateFields.title = title;
     if (description) updateFields.description = description;
     if (visibility) updateFields.visibility = visibility;
 
     const updateQuery: any = { $set: updateFields };
-    
     if (tags && Array.isArray(tags)) {
         updateQuery.$addToSet = { tags: { $each: tags } };
     }
-
-    return await Image.updateMany(
-        { _id: { $in: imageIds } },
-        updateQuery
-    );
-}
-
-export async function addImageComment(imageId: string, commenterId: string, comment: string) {
-    await dbConnect();
-
-    const commenter = await getUserById(commenterId);
-    const newImage = await Image.findOneAndUpdate(
-        { _id: imageId },
-        {
-            $push: {
-                comments: {
-                    commenter: commenterId,
-                    text: comment,
-                }
-            }
-        },
-        { new: true }
-    )
-
-    if (!newImage || !commenter) {
-        return;
-    }
-
-    const newComments = newImage.comments;
-
-    return {
-        _id: newComments[newComments.length - 1]._id,
-        commenter: {
-            username: commenter.username,
-            profilePicture: commenter.profilePicture,
-            sub: commenter.sub,
-        } as IUserInfo,
-        text: newComments[newComments.length - 1].text,
-        createdAt: newComments[newComments.length - 1].createdAt,
-    } as IComment;
-}
-
-export async function getImageComments(imageId: string) {
-    const image = await Image.aggregate([
-        {
-            $match: { _id: imageId }
-        },
-        {
-            '$lookup': {
-                'from': 'users',
-                'localField': 'comments.commenter',
-                'foreignField': '_id',
-                'as': 'commenter',
-                'pipeline': [
-                    {
-                        '$project': {
-                            'profilePicture': 1,
-                            'username': 1,
-                            'sub': 1,
-                        }
-                    }
-                ]
-            }
-        }, {
-            '$unwind': {
-                'path': '$comments'
-            }
-        }, {
-            '$lookup': {
-                'from': 'users',
-                'localField': 'comments.commenter',
-                'foreignField': '_id',
-                'as': 'comments.commenter',
-                'pipeline': [
-                    {
-                        '$project': {
-                            'profilePicture': 1,
-                            'username': 1,
-                            'sub': 1,
-                        }
-                    }
-                ]
-            }
-        }, {
-            '$unwind': {
-                'path': '$comments.commenter'
-            }
-        }, {
-            '$group': {
-                '_id': '$_id',
-                'comments': {
-                    '$push': '$comments'
-                }
-            }
-        }
-    ])
-
-    if (!image || image.length <= 0) {
-        return [];
-    }
-
-    return (image[0].comments as IComment[]).map(c => {
-        const res: IComment = {
-            _id: c._id,
-            commenter: c.commenter,
-            text: c.text,
-            createdAt: c.createdAt,
-        }
-        return res;
-    })
-}
-
-export async function removeImageComment(imageId: string, commentId: string) {
-    return await Image.updateOne(
-        { _id: imageId },
-        { $pull: { comments: { _id: commentId } } }
-    );
-}
-
-export async function hasUserLikedImage(imageId: string, viewerId: string) {
-    await dbConnect();
-    const like = await Image.findOne({ _id: imageId, owner: viewerId })
-    return !!like;
-}
-
-export async function getImageStarList(imageId: string): Promise<IUserInfo[]> {
-    const res = await Image.aggregate([
-        { $match: { _id: imageId } },
-        {
-            '$lookup': {
-                'from': 'users',
-                'localField': 'likes',
-                'foreignField': '_id',
-                'as': 'likeUserList',
-                'pipeline': [
-                    {
-                        '$project': {
-                            'profilePicture': 1,
-                            'username': 1,
-                            'sub': 1,
-                        }
-                    }
-                ]
-            }
-        },
-        {
-            $project: {
-                _id: 0,
-                likeUserList: 1
-            }
-        }
-    ])
-    return res[0]?.likeUserList;
-}
-
-// 좋아요를 추가 또는 취소한 유저의 IUserInfo 객체를 반환.
-// 실패시 null 반환.
-export async function addImageStar(imageId: string, viewerId: string): Promise<{userInfo: IUserInfo, star: boolean} | null> {
-    const user = await getUserById(viewerId);
-
-    if (!user) {
-        throw new Error('좋아요 추가에 실패했습니다. 회원 정보를 찾을 수 없습니다.')
-    }
-
-    const res = await Image.updateOne(
-        { _id: imageId },
-        { $addToSet: { likes: viewerId } }
-    )
-
-    if (res.acknowledged) {
-        return {
-            userInfo: {
-                profilePicture: user.profilePicture!,
-                username: user.username!,
-                sub: user.sub!
-            },
-            star: true
-        }
-    } else {
-        return null;
-    }
-}
-
-export async function removeImageStar(imageId: string, viewerId: string): Promise<{userInfo: IUserInfo, star: boolean} | null> {
-    const user = await getUserById(viewerId);
-
-    if (!user) {
-        throw new Error('좋아요 취소에 실패했습니다. 회원 정보를 찾을 수 없습니다.')
-    }
-
-    const res = await Image.updateOne(
-        { _id: imageId },
-        { $pull: { likes: user._id } }
-    )
-
-    if (res.acknowledged) {
-        return {
-            userInfo: {
-                profilePicture: user.profilePicture!,
-                username: user.username!,
-                sub: user.sub!
-            },
-            star: false
-        }
-    } else {
-        return null;
-    }
+    return await Image.updateMany({ _id: { $in: imageIds } }, updateQuery);
 }
 
 export async function updateImageTitle(imageId: string, new_title: string) {
-    const newInfo = { title: new_title }
-    const res = await Image.updateOne(
-        { _id: imageId },
-        {
-            $set: newInfo
-        }
-    )
-
-    if (res.acknowledged && res.modifiedCount > 0) {
-        return newInfo
-    } else {
-        return null;
-    }
+    const res = await Image.updateOne({ _id: imageId }, { $set: { title: new_title } });
+    return res.acknowledged && res.modifiedCount > 0 ? { title: new_title } : null;
 }
-
 
 export async function updateImageDescription(imageId: string, new_description: string) {
-    const newInfo = { description: new_description }
-    const res = await Image.updateOne(
-        { _id: imageId },
-        {
-            $set: newInfo
-        }
-    )
-
-    if (res.acknowledged && res.modifiedCount > 0) {
-        return newInfo
-    } else {
-        return null;
-    }
+    const res = await Image.updateOne({ _id: imageId }, { $set: { description: new_description } });
+    return res.acknowledged && res.modifiedCount > 0 ? { description: new_description } : null;
 }
 
-/**
- * 
- * @param userSub 팔로워 유저의 sub
- * @param lastUserId pagination 구현, 팔로워 배열의 마지막 유저의 _id로 다음 페이지를 가져옴
- * @returns 
- */
-export async function getFollowerListWithImages(userSub: string, page: number = 1, pageSize: number = 10) {
-    // users 문서에서 팔로우 목록을 가져온다. (users의 _id로 구성된 배열)
-    // 이 배열의 각 요소를 기준으로 이미지 목록을 가져온다.
-
-    return await User.aggregate<IFollowerListWithImage>([
-        {
-            '$match': {
-                'sub': userSub
-            }
-        }, {
-            '$unwind': {
-                'path': '$following'
-            }
-        }, 
-        {
-            '$lookup': {
-                'from': 'images',
-                'localField': 'following',
-                'foreignField': 'owner',
-                'pipeline': [
-                    {
-                        '$limit': 4
-                    }
-                ],
-                'as': 'followerImages'
-            }
-        }, {
-            '$lookup': {
-                'from': 'users',
-                'localField': 'following',
-                'foreignField': '_id',
-                'as': 'ownerDetails'
-            }
-        }, 
-        {
-            '$unwind': {
-                'path': '$ownerDetails'
-            }
-        },
-        {
-            '$project': {
-                '_id': 0,
-                'ownerDetails': 1,
-                'followerImages': 1
-            }
-        },
-        {
-            '$skip': (page - 1) * pageSize
-        },
-        {
-            '$limit': pageSize
-        }
-    ])
-}
-
-export async function searchImages(query: string, viewerId?: string, page: number = 1, pageSize: number = 10): Promise<SearchResult<ImageWithOwner>> {
+export async function searchImages(admin: boolean, query: string, page: number = 1, pageSize: number = 10): Promise<SearchResult<ImageInterface>> {
     await dbConnect();
-
-    const words = decodeURI(query).split(' ').map(word => new RegExp(word, 'i')); // 'i' for case-insensitive
-
-    const images = await Image.aggregate([
-        ...ownerLookupPipeline,
-        ...getVisibilityPipeline(viewerId),
+    const words = decodeURI(query).split(' ').map(word => new RegExp(word, 'i'));
+    const stages: PipelineStage[] = [
         {
             $match: {
                 $or: [
                     { title: { $in: words } },
                     { tags: { $in: words } },
-                    { description: { $in: words } }
-                ]
-            }
+                    { description: { $in: words } },
+                ],
+            },
         },
         {
             $facet: {
-                results: [
-                    { $skip: (page - 1) * pageSize },
-                    { $limit: pageSize }
-                ],
-                totalCount: [
-                    { $count: 'count' }
-                ]
-            }
-        }
-    ]);
-
+                results: [{ $skip: (page - 1) * pageSize }, { $limit: pageSize }],
+                totalCount: [{ $count: 'count' }],
+            },
+        },
+    ];
+    const images = await Image.aggregate(pipeWithVisibility(admin, stages));
     const totalCount = images[0].totalCount[0] ? images[0].totalCount[0].count : 0;
-
     return {
-        results: images[0].results,
+        results: await attachUrls(images[0].results as ImageInterface[]),
         totalCount,
         totalPages: Math.ceil(totalCount / pageSize),
     };
 }
 
+// 익명 좋아요: visitorId(쿠키 UUID)로 1회 dedupe. addToSet 실패=이미 좋아요됨.
+// ponytail: IP 해시 보조 검증 없음, 어뷰징 심하면 추가.
+export async function toggleLike(imageId: string, visitorId: string, liked: boolean) {
+    await dbConnect();
+    // 좋아요는 공개 사진에만. 비공개 ID 안다고 카운트 조작 못 하게 필터에 포함.
+    const base = { _id: imageId, visibility: 'public' as const };
+    if (liked) {
+        const res = await Image.updateOne(
+            { ...base, likeVisitors: { $ne: visitorId } },
+            { $push: { likeVisitors: visitorId }, $inc: { likeCount: 1 } }
+        );
+        return res.modifiedCount > 0;
+    } else {
+        const res = await Image.updateOne(
+            { ...base, likeVisitors: visitorId },
+            { $pull: { likeVisitors: visitorId }, $inc: { likeCount: -1 } }
+        );
+        return res.modifiedCount > 0;
+    }
+}
+
+export async function hasVisitorLiked(imageId: string, visitorId: string): Promise<boolean> {
+    await dbConnect();
+    const found = await Image.findOne({ _id: imageId, likeVisitors: visitorId }, { _id: 1 }).lean();
+    return !!found;
+}
+
 export async function deleteS3Images(s3_keys: string[]) {
     let _deleted: DeletedObject[] | undefined = [];
     try {
-        const s3 = new S3({
-            credentials: {
-                accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
-                secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!
-            },
-    
-            region: process.env.AWS_REGION
-        });
-    
         const { Deleted } = await s3.deleteObjects({
-            Bucket: process.env.S3_BUCKET_NAME!,
-            Delete: {
-                Objects: s3_keys.map(k => ({ Key: k }))
-            }
-        })
-
+            Bucket: S3_BUCKET,
+            Delete: { Objects: s3_keys.map(k => ({ Key: k })) },
+        });
         _deleted = Deleted;
-    } catch(err) {
-        console.log('S3 Bucket Object 삭제 실패 ', err)
-    } finally {
-        return _deleted ? _deleted.length > 0 : false;
+    } catch (err) {
+        console.log('S3 Bucket Object 삭제 실패 ', err);
     }
+    return _deleted ? _deleted.length > 0 : false;
+}
+
+// 연도 기준: exif.takenAt 우선, 없으면 uploadedAt.
+export async function getImagesByYear(admin: boolean, year: number) {
+    await dbConnect();
+    const start = new Date(Date.UTC(year, 0, 1));
+    const end = new Date(Date.UTC(year + 1, 0, 1));
+    const stages: PipelineStage[] = [
+        {
+            $addFields: {
+                _effectiveDate: { $ifNull: ['$exif.takenAt', '$uploadedAt'] },
+            },
+        },
+        { $match: { _effectiveDate: { $gte: start, $lt: end } } },
+        { $sort: { _effectiveDate: -1 } },
+        { $project: { _effectiveDate: 0 } },
+    ];
+    return await attachUrls(await Image.aggregate<ImageInterface>(pipeWithVisibility(admin, stages)));
+}
+
+export async function getAvailableYears(admin: boolean): Promise<number[]> {
+    await dbConnect();
+    const stages: PipelineStage[] = [
+        {
+            $group: {
+                _id: { $year: { $ifNull: ['$exif.takenAt', '$uploadedAt'] } },
+            },
+        },
+        { $sort: { _id: -1 } },
+    ];
+    const rows = await Image.aggregate<{ _id: number }>(pipeWithVisibility(admin, stages));
+    return rows.map(r => r._id).filter(y => y);
+}
+
+export async function getRandomImageId(admin: boolean): Promise<string | undefined> {
+    await dbConnect();
+    const rows = await Image.aggregate<{ _id: string }>(pipeWithVisibility(admin, [
+        { $sample: { size: 1 } },
+        { $project: { _id: 1 } },
+    ]));
+    return rows[0]?._id;
 }
 
 export async function deleteImages(imageIds: string[]) {
     await dbConnect();
-
-    return (await Image.deleteMany({
-        _id: { $in: imageIds }
-    })).acknowledged;
+    return (await Image.deleteMany({ _id: { $in: imageIds } })).acknowledged;
 }
