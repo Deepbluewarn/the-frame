@@ -4,11 +4,11 @@
 
 개인 사진첩 프로젝트
 
-![Next.js](https://img.shields.io/badge/Next.js-14-000?logo=nextdotjs)
-![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)
-![Tailwind](https://img.shields.io/badge/Tailwind-3-38B2AC?logo=tailwindcss&logoColor=white)
-![MongoDB](https://img.shields.io/badge/MongoDB-7-47A248?logo=mongodb&logoColor=white)
-![MinIO](https://img.shields.io/badge/MinIO-S3-C72E49?logo=minio&logoColor=white)
+![Next.js](https://img.shields.io/badge/next.js-000000?style=for-the-badge&logo=nextdotjs&logoColor=white)
+![TypeScript](https://img.shields.io/badge/typescript-%23007ACC.svg?style=for-the-badge&logo=typescript&logoColor=white)
+![Tailwind](https://img.shields.io/badge/tailwindcss-%2338B2AC.svg?style=for-the-badge&logo=tailwind-css&logoColor=white)
+![MongoDB](https://img.shields.io/badge/MongoDB-%234ea94b.svg?style=for-the-badge&logo=mongodb&logoColor=white)
+![MinIO](https://img.shields.io/badge/MinIO-C72E49?style=for-the-badge&logo=minio&logoColor=white)
 
 [사이트 보러가기 →](https://photos.bluewarn.dev)
 
@@ -18,15 +18,15 @@
 
 ## 기능
 
-- 정사각 그리드 홈, 무한 스크롤
-- 사진 클릭 시 몰입 모드 (마우스 따라 이동, 단계별 확대)
-- EXIF 자동 표시 — 카메라 · 렌즈 · 셔터 · ISO
-- 회원가입 없는 좋아요 (쿠키 기준)
-- 연도별 아카이브 · 랜덤 사진
+- 사진 그리드와 상세 보기
+- 사진 크게 보기
+- EXIF 표시
+- 익명 좋아요
+- 연도별 아카이브
 - 다크 모드
-- 사이트맵 · 오픈그래프 자동 생성
-- 관리자 페이지 (업로드 · 편집 · 삭제)
-- 비공개 사진 지원 (링크가 있어도 서버가 차단)
+- SEO 지원
+- 관리자 페이지
+- 비공개 사진
 
 ## 시작하기
 
