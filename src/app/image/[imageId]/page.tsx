@@ -69,7 +69,7 @@ export default async function Page({ params }: { params: { imageId: string } }) 
     const prev = currIdx > 0 ? surrounding[currIdx - 1] : undefined;
     const next = currIdx >= 0 && currIdx < surrounding.length - 1 ? surrounding[currIdx + 1] : undefined;
 
-    const authorName = process.env.NEXT_PUBLIC_AUTHOR_NAME || 'THE FRAME';
+    const authorName = process.env.AUTHOR_NAME || 'THE FRAME';
     const authorUrl = process.env.SITE_URL || undefined;
 
     const jsonLd = {
