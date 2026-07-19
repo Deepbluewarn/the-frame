@@ -146,7 +146,7 @@ const DeleteDialog = forwardRef<HTMLDialogElement, {
             <div className="p-6 space-y-4">
                 <h2 className="font-medium">삭제 확인</h2>
                 <p className="text-sm text-neutral-500 dark:text-neutral-400">
-                    "{image?.title}" 사진을 삭제합니다. 되돌릴 수 없습니다.
+                    &ldquo;{image?.title}&rdquo; 사진을 삭제합니다. 되돌릴 수 없습니다.
                 </p>
                 <div className="space-y-1">
                     <label className="text-xs text-neutral-500 dark:text-neutral-400">
