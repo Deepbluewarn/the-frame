@@ -93,15 +93,25 @@ export default function PhotoZoom({
         return () => clearTimeout(t);
     }, [step, steps]);
 
-    const onMouseMove = (e: React.MouseEvent<HTMLDialogElement>) => {
-        // 마우스가 PAD 안쪽으로 들어가야 relX가 0/1에 도달 → 코너를 완전히 볼 수 있음.
+    const updateRelFromPoint = (clientX: number, clientY: number) => {
         const vw = window.innerWidth, vh = window.innerHeight;
         const availW = vw - 2 * PAD, availH = vh - 2 * PAD;
         relRef.current = {
-            x: Math.min(1, Math.max(0, (e.clientX - PAD) / availW)),
-            y: Math.min(1, Math.max(0, (e.clientY - PAD) / availH)),
+            x: Math.min(1, Math.max(0, (clientX - PAD) / availW)),
+            y: Math.min(1, Math.max(0, (clientY - PAD) / availH)),
         };
         applyTransform(steps[step]);
+    };
+
+    const onMouseMove = (e: React.MouseEvent<HTMLDialogElement>) => {
+        updateRelFromPoint(e.clientX, e.clientY);
+    };
+
+    const onTouchMove = (e: React.TouchEvent<HTMLDialogElement>) => {
+        if (e.touches.length !== 1) return;
+        // PhotoNavigator의 window-level 스와이프 리스너와 충돌 방지
+        e.stopPropagation();
+        updateRelFromPoint(e.touches[0].clientX, e.touches[0].clientY);
     };
 
     const onClickDialog = (e: React.MouseEvent) => {
@@ -130,7 +140,10 @@ export default function PhotoZoom({
                 ref={dlgRef}
                 onClick={onClickDialog}
                 onMouseMove={onMouseMove}
-                className="p-0 m-0 max-w-none max-h-none w-screen h-screen bg-black backdrop:bg-black/90 overflow-hidden"
+                onTouchMove={onTouchMove}
+                onTouchStart={e => e.stopPropagation()}
+                onTouchEnd={e => e.stopPropagation()}
+                className="p-0 m-0 max-w-none max-h-none w-screen h-screen bg-black backdrop:bg-black/90 overflow-hidden touch-none"
             >
                 <img
                     ref={imgRef}
