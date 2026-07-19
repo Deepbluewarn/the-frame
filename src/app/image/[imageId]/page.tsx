@@ -11,16 +11,22 @@ import type { ImageInterface, Exif } from "@/db/models/Image";
 export const dynamic = 'force-dynamic';
 
 export async function generateMetadata({ params }: { params: { imageId: string } }): Promise<Metadata> {
-    if (!isValidObjectId(params.imageId)) return {};
+    if (!isValidObjectId(params.imageId)) return { robots: { index: false, follow: false } };
     const image = await actionGetImageById(params.imageId);
-    if (!image || image.visibility === 'private') return {};
+    if (!image) return { robots: { index: false, follow: false } };
+    if (image.visibility === 'private') return { robots: { index: false, follow: false } };
+
+    const tagsPart = image.tags?.length ? `태그: ${image.tags.join(', ')}` : '';
+    const descBase = image.description || image.title;
+    const description = tagsPart ? `${descBase} — ${tagsPart}` : descBase;
+
     return {
         title: image.title,
-        description: image.description || image.title,
+        description,
         alternates: { canonical: `/image/${params.imageId}` },
         openGraph: {
             title: image.title,
-            description: image.description || image.title,
+            description,
             images: [{ url: image.url, width: image.width, height: image.height }],
             type: 'article',
         },
@@ -63,16 +69,25 @@ export default async function Page({ params }: { params: { imageId: string } }) 
     const prev = currIdx > 0 ? surrounding[currIdx - 1] : undefined;
     const next = currIdx >= 0 && currIdx < surrounding.length - 1 ? surrounding[currIdx + 1] : undefined;
 
+    const authorName = process.env.NEXT_PUBLIC_AUTHOR_NAME || 'THE FRAME';
+    const authorUrl = process.env.SITE_URL || undefined;
+
     const jsonLd = {
         "@context": "https://schema.org",
         "@type": "ImageObject",
         contentUrl: image.url,
         name: image.title,
         description: image.description || undefined,
+        keywords: image.tags?.length ? image.tags.join(', ') : undefined,
         width: image.width,
         height: image.height,
         uploadDate: image.uploadedAt,
         datePublished: image.exif?.takenAt || image.uploadedAt,
+        author: {
+            "@type": "Person",
+            name: authorName,
+            url: authorUrl,
+        },
     };
 
     return (
