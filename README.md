@@ -10,7 +10,7 @@
 ![MongoDB](https://img.shields.io/badge/MongoDB-%234ea94b.svg?style=for-the-badge&logo=mongodb&logoColor=white)
 ![MinIO](https://img.shields.io/badge/MinIO-C72E49?style=for-the-badge&logo=minio&logoColor=white)
 
-[사이트 보러가기 →](https://photos.bluewarn.dev)
+[사이트 보러가기 →](https://frame.bluewarn.dev)
 
 </div>
 
