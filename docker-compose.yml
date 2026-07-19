@@ -10,7 +10,7 @@ services:
       - "192.168.1.14:3031:3000"   # Caddy가 192.168.1.14:3031 프록시
 
   mongo:
-    image: mongo:7
+    image: mongo:4.4   # 서버 CPU AVX 미지원 대응
     restart: unless-stopped
     volumes:
       - mongo-data:/data/db
