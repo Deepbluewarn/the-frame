@@ -36,8 +36,9 @@ export async function ensureBucket() {
 const PRESIGN_TTL = 60 * 60;
 
 export async function presign(s3_key: string): Promise<string> {
+    // ponytail: aws-sdk v3 타입 문제로 캐스팅. 런타임 문제 없음.
     return await getSignedUrl(
-        s3,
+        s3 as any,
         new GetObjectCommand({ Bucket: S3_BUCKET, Key: s3_key }),
         { expiresIn: PRESIGN_TTL }
     );

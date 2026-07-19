@@ -7,7 +7,7 @@ services:
     environment:
       MONGODB_URI: mongodb://mongo:27017/the-frame
     ports:
-      - "127.0.0.1:3031:3000"   # Caddy가 127.0.0.1:3031 프록시
+      - "192.168.1.14:3031:3000"   # Caddy가 192.168.1.14:3031 프록시
 
   mongo:
     image: mongo:7
@@ -25,8 +25,8 @@ services:
     volumes:
       - minio-data:/data
     ports:
-      - "127.0.0.1:9000:9000"   # Caddy가 s3.bluewarn.dev로 프록시
-      - "127.0.0.1:9001:9001"   # 관리자 콘솔
+      - "192.168.1.14:9000:9000"   # Caddy가 s3.bluewarn.dev로 프록시
+      - "192.168.1.14:9001:9001"   # 관리자 콘솔
 
   umami-db:
     image: postgres:15-alpine
@@ -47,7 +47,7 @@ services:
       DATABASE_TYPE: postgresql
       APP_SECRET: ${UMAMI_APP_SECRET}
     ports:
-      - "127.0.0.1:3040:3000"   # 필요시 Caddy로 노출
+      - "192.168.1.14:3040:3000"   # 필요시 Caddy로 노출
 
 volumes:
   mongo-data:
