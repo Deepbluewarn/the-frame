@@ -1,15 +1,58 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import exifr from 'exifr';
 import { UploadAction } from '@/actions/upload/upload';
 import { UploadMeta } from '@/interface/Upload';
 import { Visibility } from '@/db/models/Image';
 
 type DraftStatus = 'pending' | 'uploading' | 'done' | 'error';
-type Draft = UploadMeta & { file: File; preview: string; key: string; status: DraftStatus; errorMsg?: string };
+type ClientExif = {
+    camera?: string;
+    lens?: string;
+    focalLength?: number;
+    aperture?: number;
+    shutterSpeed?: string;
+    iso?: number;
+    takenAt?: string;
+};
+type Draft = UploadMeta & {
+    file: File;
+    preview: string;
+    key: string;
+    status: DraftStatus;
+    errorMsg?: string;
+    exif?: ClientExif;
+};
 
-const MAX_SIZE = 300 * 1024 * 1024; // 300MB
+const MAX_SIZE = 300 * 1024 * 1024;
 const ALLOWED = /^image\/(jpeg|jpg|png|webp|avif)$/;
+const EXIF_PICK = ['Make', 'Model', 'LensModel', 'FocalLength', 'FNumber', 'ExposureTime', 'ISO', 'DateTimeOriginal'];
+
+async function readExif(file: File): Promise<ClientExif | undefined> {
+    try {
+        const data: any = await exifr.parse(file, { pick: EXIF_PICK });
+        if (!data) return undefined;
+        const camera = [data.Make, data.Model].filter(Boolean).join(' ').trim() || undefined;
+        let shutterSpeed: string | undefined;
+        if (typeof data.ExposureTime === 'number' && data.ExposureTime > 0) {
+            shutterSpeed = data.ExposureTime < 1
+                ? `1/${Math.round(1 / data.ExposureTime)}`
+                : `${data.ExposureTime}"`;
+        }
+        return {
+            camera,
+            lens: data.LensModel || undefined,
+            focalLength: typeof data.FocalLength === 'number' ? data.FocalLength : undefined,
+            aperture: typeof data.FNumber === 'number' ? data.FNumber : undefined,
+            shutterSpeed,
+            iso: typeof data.ISO === 'number' ? data.ISO : undefined,
+            takenAt: data.DateTimeOriginal ? new Date(data.DateTimeOriginal).toLocaleString('ko-KR') : undefined,
+        };
+    } catch {
+        return undefined;
+    }
+}
 
 function makeDraft(file: File): Draft {
     return {
@@ -25,13 +68,43 @@ function makeDraft(file: File): Draft {
     };
 }
 
+function ExifPreview({ exif }: { exif?: ClientExif }) {
+    if (!exif) return <p className="text-[10px] text-neutral-400 dark:text-neutral-600">EXIF 없음</p>;
+    const rows = [
+        ['촬영일', exif.takenAt],
+        ['카메라', exif.camera],
+        ['렌즈', exif.lens],
+        ['초점거리', exif.focalLength ? `${exif.focalLength}mm` : undefined],
+        ['조리개', exif.aperture ? `f/${exif.aperture}` : undefined],
+        ['셔터', exif.shutterSpeed],
+        ['ISO', exif.iso],
+    ].filter(([, v]) => v !== undefined && v !== null && v !== '');
+    if (rows.length === 0) return <p className="text-[10px] text-neutral-400 dark:text-neutral-600">EXIF 없음</p>;
+    return (
+        <dl className="text-[10px] space-y-0.5 text-neutral-400 dark:text-neutral-500">
+            {rows.map(([k, v]) => (
+                <div key={k as string} className="flex gap-2">
+                    <dt className="w-12 shrink-0 text-neutral-300 dark:text-neutral-600">{k}</dt>
+                    <dd>{v as any}</dd>
+                </div>
+            ))}
+        </dl>
+    );
+}
+
 export default function UploadPage() {
     const [drafts, setDrafts] = useState<Draft[]>([]);
     const [busy, setBusy] = useState(false);
     const [msg, setMsg] = useState<string | null>(null);
     const [dragOver, setDragOver] = useState(false);
+    const [preview, setPreview] = useState<string | null>(null);
+    const previewDlg = useRef<HTMLDialogElement>(null);
 
-    const onFiles = (list: FileList | null | File[]) => {
+    const patch = (key: string, patch: Partial<Draft>) => {
+        setDrafts(prev => prev.map(d => d.key === key ? { ...d, ...patch } : d));
+    };
+
+    const onFiles = async (list: FileList | null | File[]) => {
         if (!list) return;
         const rejected: string[] = [];
         const arr = Array.from(list).filter(f => {
@@ -40,7 +113,14 @@ export default function UploadPage() {
             return true;
         });
         if (rejected.length) setMsg(`제외됨: ${rejected.join(', ')}`);
-        setDrafts(prev => [...prev, ...arr.map(makeDraft)]);
+        const newDrafts = arr.map(makeDraft);
+        setDrafts(prev => [...prev, ...newDrafts]);
+        // EXIF는 비동기로 뒤이어 붙임
+        for (const d of newDrafts) {
+            readExif(d.file).then(exif => {
+                if (exif) patch(d.key, { exif });
+            });
+        }
     };
 
     const onDrop = (e: React.DragEvent) => {
@@ -49,13 +129,26 @@ export default function UploadPage() {
         onFiles(e.dataTransfer.files);
     };
 
-    const patch = (key: string, patch: Partial<Draft>) => {
-        setDrafts(prev => prev.map(d => d.key === key ? { ...d, ...patch } : d));
-    };
-
     const remove = (key: string) => {
         setDrafts(prev => prev.filter(d => d.key !== key));
     };
+
+    const openPreview = (url: string) => {
+        setPreview(url);
+        previewDlg.current?.showModal();
+    };
+    const closePreview = () => {
+        previewDlg.current?.close();
+        setPreview(null);
+    };
+
+    useEffect(() => {
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key === 'Escape' && previewDlg.current?.open) closePreview();
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, []);
 
     const submit = async () => {
         if (drafts.length === 0) return;
@@ -112,17 +205,25 @@ export default function UploadPage() {
                 <ul className="space-y-6">
                     {drafts.map(d => (
                         <li key={d.key} className="flex gap-4 border-b border-neutral-200 dark:border-neutral-800 pb-6">
-                            <div className="relative w-32 h-32 shrink-0">
-                                <img src={d.preview} alt="" className="w-32 h-32 object-cover bg-neutral-100 dark:bg-neutral-900" />
-                                {d.status === 'uploading' && (
-                                    <div className="absolute inset-0 flex items-center justify-center bg-black/60 text-white text-xs">업로드 중…</div>
-                                )}
-                                {d.status === 'done' && (
-                                    <div className="absolute inset-0 flex items-center justify-center bg-black/60 text-green-400 text-xs">완료</div>
-                                )}
-                                {d.status === 'error' && (
-                                    <div className="absolute inset-0 flex items-center justify-center bg-black/60 text-red-400 text-xs">실패</div>
-                                )}
+                            <div className="shrink-0 space-y-2">
+                                <button
+                                    type="button"
+                                    onClick={() => openPreview(d.preview)}
+                                    className="relative w-32 h-32 block group"
+                                    aria-label="크게 보기"
+                                >
+                                    <img src={d.preview} alt="" className="w-32 h-32 object-cover bg-neutral-100 dark:bg-neutral-900 cursor-zoom-in" />
+                                    {d.status === 'uploading' && (
+                                        <div className="absolute inset-0 flex items-center justify-center bg-black/60 text-white text-xs">업로드 중…</div>
+                                    )}
+                                    {d.status === 'done' && (
+                                        <div className="absolute inset-0 flex items-center justify-center bg-black/60 text-green-400 text-xs">완료</div>
+                                    )}
+                                    {d.status === 'error' && (
+                                        <div className="absolute inset-0 flex items-center justify-center bg-black/60 text-red-400 text-xs">실패</div>
+                                    )}
+                                </button>
+                                <ExifPreview exif={d.exif} />
                             </div>
                             <div className="flex-1 space-y-2">
                                 <input
@@ -190,6 +291,21 @@ export default function UploadPage() {
                         : `업로드 (${drafts.filter(d => d.status !== 'done').length})`}
                 </button>
             </div>
+
+            <dialog
+                ref={previewDlg}
+                onClick={closePreview}
+                className="p-0 m-0 max-w-none max-h-none w-screen h-screen bg-black backdrop:bg-black/90"
+            >
+                {preview && (
+                    <img
+                        src={preview}
+                        alt=""
+                        className="w-full h-full object-contain cursor-zoom-out select-none"
+                        draggable={false}
+                    />
+                )}
+            </dialog>
         </div>
     );
 }
