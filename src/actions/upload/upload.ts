@@ -4,7 +4,7 @@ import { Upload } from "@aws-sdk/lib-storage";
 import { createImage } from "@/services/Image";
 import { getImageDimensions } from "@/utils/file";
 import { extractExif } from "@/utils/exif";
-import { makeThumb, makeMedium, makeBlurhash, computeOrientation } from "@/utils/image-pipeline";
+import { makeThumb, makeMedium, makeBlurhash, computeOrientation, needsNormalize, normalizeToJpeg } from "@/utils/image-pipeline";
 import { s3, S3_BUCKET, ensureBucket } from "@/utils/s3";
 import connectDB from '@/db/init';
 import { Types } from "mongoose";
@@ -44,21 +44,26 @@ export const UploadAction = async (metadata: ImageInterface[] | null, data: Form
     try {
         for (const metaFile of metaFiles) {
             const fileObj = metaFile.fileObject;
-            const buffer = Buffer.from(await fileObj.arrayBuffer());
+            const rawBuffer = Buffer.from(await fileObj.arrayBuffer());
             const stamp = Date.now();
-            const key = `${fileObj.name}_${stamp}`;
-            const keyThumb = `${fileObj.name}_${stamp}_thumb.jpg`;
-            const keyMedium = `${fileObj.name}_${stamp}_medium.jpg`;
+            // 브라우저가 못 여는 포맷은 JPEG로 정규화 → 원본 서빙 가능
+            const normalize = needsNormalize(fileObj.type);
+            const buffer = normalize ? await normalizeToJpeg(rawBuffer) : rawBuffer;
+            const contentType = normalize ? 'image/jpeg' : fileObj.type;
+            const baseName = normalize ? fileObj.name.replace(/\.[^.]+$/, '.jpg') : fileObj.name;
+            const key = `${baseName}_${stamp}`;
+            const keyThumb = `${baseName}_${stamp}_thumb.jpg`;
+            const keyMedium = `${baseName}_${stamp}_medium.jpg`;
 
             const [thumbBuf, mediumBuf, blurhash, exif] = await Promise.all([
                 makeThumb(buffer),
                 makeMedium(buffer),
                 makeBlurhash(buffer),
-                extractExif(buffer),
+                extractExif(rawBuffer), // EXIF는 원본에서 (정규화하면 유실될 수 있음)
             ]);
 
             await Promise.all([
-                putObject(buffer, key, fileObj.type),
+                putObject(buffer, key, contentType),
                 putObject(thumbBuf, keyThumb, 'image/jpeg'),
                 putObject(mediumBuf, keyMedium, 'image/jpeg'),
             ]);

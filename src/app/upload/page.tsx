@@ -26,7 +26,7 @@ type Draft = UploadMeta & {
 };
 
 const MAX_SIZE = 300 * 1024 * 1024;
-const ALLOWED = /^image\/(jpeg|jpg|png|webp|avif)$/;
+const ALLOWED = /^image\/(jpeg|jpg|png|webp|avif|tiff|tif)$/;
 const EXIF_PICK = ['Make', 'Model', 'LensModel', 'FocalLength', 'FNumber', 'ExposureTime', 'ISO', 'DateTimeOriginal'];
 
 async function readExif(file: File): Promise<ClientExif | undefined> {

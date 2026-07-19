@@ -27,6 +27,17 @@ export async function makeBlurhash(buffer: Buffer): Promise<string | undefined> 
     }
 }
 
+// 브라우저가 못 여는 포맷(TIFF 등)은 JPEG로 변환. 브라우저 렌더 가능한 원본은 그대로.
+const BROWSER_RENDERABLE = /^image\/(jpeg|jpg|png|webp|avif|gif)$/;
+
+export function needsNormalize(contentType: string): boolean {
+    return !BROWSER_RENDERABLE.test(contentType);
+}
+
+export async function normalizeToJpeg(buffer: Buffer): Promise<Buffer> {
+    return sharp(buffer).jpeg({ quality: 92 }).toBuffer();
+}
+
 export function computeOrientation(width: number, height: number): Orientation {
     const ratio = width / height;
     if (ratio > 1.05) return 'landscape';
