@@ -209,10 +209,19 @@ export default function UploadPage() {
                                 <button
                                     type="button"
                                     onClick={() => openPreview(d.preview)}
-                                    className="relative w-32 h-32 block group"
+                                    className="relative w-32 h-32 block group bg-neutral-100 dark:bg-neutral-900"
                                     aria-label="크게 보기"
                                 >
-                                    <img src={d.preview} alt="" className="w-32 h-32 object-cover bg-neutral-100 dark:bg-neutral-900 cursor-zoom-in" />
+                                    <img
+                                        src={d.preview}
+                                        alt=""
+                                        className="w-32 h-32 object-cover cursor-zoom-in"
+                                        onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+                                    />
+                                    {/* 브라우저가 못 여는 포맷 (TIFF 등) 대체 표기 */}
+                                    <div className="absolute inset-0 flex items-center justify-center text-[10px] text-neutral-400 dark:text-neutral-600 pointer-events-none -z-10">
+                                        {d.file.type.replace('image/', '').toUpperCase()}
+                                    </div>
                                     {d.status === 'uploading' && (
                                         <div className="absolute inset-0 flex items-center justify-center bg-black/60 text-white text-xs">업로드 중…</div>
                                     )}
@@ -220,7 +229,7 @@ export default function UploadPage() {
                                         <div className="absolute inset-0 flex items-center justify-center bg-black/60 text-green-400 text-xs">완료</div>
                                     )}
                                     {d.status === 'error' && (
-                                        <div className="absolute inset-0 flex items-center justify-center bg-black/60 text-red-400 text-xs">실패</div>
+                                        <div className="absolute inset-0 flex items-center justify-center bg-black/60 text-red-400 text-xs" title={d.errorMsg}>실패</div>
                                     )}
                                 </button>
                                 <ExifPreview exif={d.exif} />
