@@ -107,11 +107,40 @@ export default function PhotoZoom({
         updateRelFromPoint(e.clientX, e.clientY);
     };
 
-    const onTouchMove = (e: React.TouchEvent<HTMLDialogElement>) => {
-        if (e.touches.length !== 1) return;
-        // PhotoNavigator의 window-level 스와이프 리스너와 충돌 방지
+    // 모바일: 드래그 방식. 터치 시작 지점 + rel 기억, 이동량만큼 rel 반대로 조정.
+    const touchStartRef = useRef<{ x: number; y: number; relX: number; relY: number } | null>(null);
+
+    const onTouchStart = (e: React.TouchEvent<HTMLDialogElement>) => {
         e.stopPropagation();
-        updateRelFromPoint(e.touches[0].clientX, e.touches[0].clientY);
+        if (e.touches.length !== 1) return;
+        touchStartRef.current = {
+            x: e.touches[0].clientX,
+            y: e.touches[0].clientY,
+            relX: relRef.current.x,
+            relY: relRef.current.y,
+        };
+    };
+
+    const onTouchMove = (e: React.TouchEvent<HTMLDialogElement>) => {
+        e.stopPropagation();
+        if (e.touches.length !== 1 || !touchStartRef.current) return;
+        const start = touchStartRef.current;
+        const scale = steps[step];
+        const dw = width * scale, dh = height * scale;
+        const overflowX = Math.max(1, dw - (window.innerWidth - 2 * PAD));
+        const overflowY = Math.max(1, dh - (window.innerHeight - 2 * PAD));
+        const dx = e.touches[0].clientX - start.x;
+        const dy = e.touches[0].clientY - start.y;
+        relRef.current = {
+            x: Math.min(1, Math.max(0, start.relX - dx / overflowX)),
+            y: Math.min(1, Math.max(0, start.relY - dy / overflowY)),
+        };
+        applyTransform(steps[step]);
+    };
+
+    const onTouchEnd = (e: React.TouchEvent<HTMLDialogElement>) => {
+        e.stopPropagation();
+        touchStartRef.current = null;
     };
 
     const onClickDialog = (e: React.MouseEvent) => {
@@ -140,9 +169,9 @@ export default function PhotoZoom({
                 ref={dlgRef}
                 onClick={onClickDialog}
                 onMouseMove={onMouseMove}
+                onTouchStart={onTouchStart}
                 onTouchMove={onTouchMove}
-                onTouchStart={e => e.stopPropagation()}
-                onTouchEnd={e => e.stopPropagation()}
+                onTouchEnd={onTouchEnd}
                 className="p-0 m-0 max-w-none max-h-none w-screen h-screen bg-black backdrop:bg-black/90 overflow-hidden touch-none"
             >
                 <img
