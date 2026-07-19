@@ -1,7 +1,7 @@
 import HomeGrid from '@/components/HomeGrid';
 import { actionGetRecentImages } from '@/actions/image';
 
-export const revalidate = 60;
+export const dynamic = 'force-dynamic';
 
 export default async function Home() {
   const initial = await actionGetRecentImages({ limit: 30 });

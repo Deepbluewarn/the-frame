@@ -8,7 +8,7 @@ import PhotoNavigator from "@/components/PhotoNavigator";
 import PhotoZoom from "@/components/PhotoZoom";
 import type { ImageInterface, Exif } from "@/db/models/Image";
 
-export const revalidate = 60;
+export const dynamic = 'force-dynamic';
 
 export async function generateMetadata({ params }: { params: { imageId: string } }): Promise<Metadata> {
     if (!isValidObjectId(params.imageId)) return {};

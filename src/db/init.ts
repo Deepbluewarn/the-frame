@@ -1,33 +1,17 @@
 import mongoose from "mongoose";
 declare global {
-    var mongoose: any; // This must be a `var` and not a `let / const`
-}
-
-const MONGODB_URI = process.env.MONGODB_URI!;
-
-if (!MONGODB_URI) {
-    throw new Error(
-        "Please define the MONGODB_URI environment variable inside .env.local",
-    );
+    var mongoose: any;
 }
 
 let cached = global.mongoose;
-
-if (!cached) {
-    cached = global.mongoose = { conn: null, promise: null };
-}
+if (!cached) cached = global.mongoose = { conn: null, promise: null };
 
 async function dbConnect() {
-    if (cached.conn) {
-        return cached.conn;
-    }
+    const uri = process.env.MONGODB_URI;
+    if (!uri) throw new Error("MONGODB_URI 환경변수가 없습니다.");
+    if (cached.conn) return cached.conn;
     if (!cached.promise) {
-        const opts = {
-            bufferCommands: false,
-        };
-        cached.promise = mongoose.connect(MONGODB_URI, opts).then((mongoose) => {
-            return mongoose;
-        });
+        cached.promise = mongoose.connect(uri, { bufferCommands: false }).then(m => m);
     }
     try {
         cached.conn = await cached.promise;
@@ -35,7 +19,6 @@ async function dbConnect() {
         cached.promise = null;
         throw e;
     }
-
     return cached.conn;
 }
 

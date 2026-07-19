@@ -4,7 +4,7 @@ import { notFound } from 'next/navigation';
 import type { Metadata } from 'next';
 import SafeImg from '@/components/SafeImg';
 
-export const revalidate = 300;
+export const dynamic = 'force-dynamic';
 
 export async function generateMetadata({ params }: { params: { year: string } }): Promise<Metadata> {
     return {
