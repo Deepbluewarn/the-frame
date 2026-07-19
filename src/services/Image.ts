@@ -5,7 +5,8 @@ import Image, { ImageInterface, Visibility } from "@/db/models/Image";
 import { PipelineStage } from "mongoose";
 import { SearchResult } from "./types";
 import { DeletedObject } from "@aws-sdk/client-s3";
-import { s3, S3_BUCKET, attachUrls } from "@/utils/s3";
+import { getS3, attachUrls } from "@/utils/s3";
+import { config } from "@/config/env";
 
 // ponytail: viewer 권한은 관리자 아니면 public만. 미들웨어와 auth-wrapper.isAdmin이 게이팅.
 function visibilityMatch(admin: boolean): PipelineStage.Match | null {
@@ -96,21 +97,30 @@ export async function removeImageTag(imageId: string, tag: string) {
     return await Image.updateOne({ _id: imageId }, { $pull: { tags: tag } });
 }
 
-export async function updateImagesMetadata(
-    imageIds: string[], title?: string, description?: string, tags?: string[],
-    visibility?: Visibility,
-) {
-    await dbConnect();
-    const updateFields: any = {};
-    if (title) updateFields.title = title;
-    if (description) updateFields.description = description;
-    if (visibility) updateFields.visibility = visibility;
+// 태그는 replace(덮어쓰기) 또는 append(추가) 중 선택 가능.
+// 이전엔 무조건 append였음. 관리 페이지에서 태그 지우려면 replace 필요.
+export interface MetadataUpdate {
+    title?: string;
+    description?: string;
+    visibility?: Visibility;
+    tags?: { mode: 'replace' | 'append'; values: string[] };
+}
 
-    const updateQuery: any = { $set: updateFields };
-    if (tags && Array.isArray(tags)) {
-        updateQuery.$addToSet = { tags: { $each: tags } };
+export async function updateImagesMetadata(imageIds: string[], update: MetadataUpdate) {
+    await dbConnect();
+    const $set: any = {};
+    if (update.title !== undefined) $set.title = update.title;
+    if (update.description !== undefined) $set.description = update.description;
+    if (update.visibility !== undefined) $set.visibility = update.visibility;
+    if (update.tags?.mode === 'replace') $set.tags = update.tags.values;
+
+    const query: any = {};
+    if (Object.keys($set).length) query.$set = $set;
+    if (update.tags?.mode === 'append' && update.tags.values.length) {
+        query.$addToSet = { tags: { $each: update.tags.values } };
     }
-    return await Image.updateMany({ _id: { $in: imageIds } }, updateQuery);
+
+    return await Image.updateMany({ _id: { $in: imageIds } }, query);
 }
 
 export async function updateImageTitle(imageId: string, new_title: string) {
@@ -182,8 +192,8 @@ export async function hasVisitorLiked(imageId: string, visitorId: string): Promi
 export async function deleteS3Images(s3_keys: string[]) {
     let _deleted: DeletedObject[] | undefined = [];
     try {
-        const { Deleted } = await s3.deleteObjects({
-            Bucket: S3_BUCKET,
+        const { Deleted } = await getS3().deleteObjects({
+            Bucket: config.S3_BUCKET,
             Delete: { Objects: s3_keys.map(k => ({ Key: k })) },
         });
         _deleted = Deleted;

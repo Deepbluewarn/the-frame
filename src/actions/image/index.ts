@@ -82,11 +82,20 @@ export async function actionRemoveImageTag(_id: string, tag: string) {
 }
 
 export async function actionUpdateImagesMetadata(
-    imageIds: string[], title?: string, description?: string, tags?: string[],
+    imageIds: string[],
+    title?: string,
+    description?: string,
+    tags?: string[],
     visibility?: Visibility,
+    tagsMode: 'replace' | 'append' = 'replace',
 ) {
     assertAdmin();
-    return (await updateImagesMetadata(imageIds, title, description, tags, visibility)).acknowledged;
+    return (await updateImagesMetadata(imageIds, {
+        title,
+        description,
+        visibility,
+        tags: tags !== undefined ? { mode: tagsMode, values: tags } : undefined,
+    })).acknowledged;
 }
 
 export async function actionToggleLike(imageId: string, liked: boolean) {

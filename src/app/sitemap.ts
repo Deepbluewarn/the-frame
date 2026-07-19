@@ -1,12 +1,13 @@
 import { MetadataRoute } from 'next';
 import Image from '@/db/models/Image';
 import dbConnect from '@/db/init';
+import { config } from '@/config/env';
 
 export const dynamic = 'force-dynamic';
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     await dbConnect();
-    const base = process.env.SITE_URL || 'http://localhost:3031';
+    const base = config.SITE_URL || 'http://localhost:3031';
     const images = await Image.find({ visibility: 'public' }, { _id: 1, uploadedAt: 1 }).lean();
 
     const years = Array.from(new Set(images.map(i => new Date(i.uploadedAt).getFullYear())));

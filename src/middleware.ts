@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { config as env } from '@/config/env';
 
 const REALM = 'THE FRAME admin';
 
@@ -10,15 +11,15 @@ function unauthorized() {
 }
 
 export function middleware(req: NextRequest) {
-  const expectedUser = process.env.ADMIN_USER;
-  const expectedPass = process.env.ADMIN_PASS;
-  if (!expectedUser || !expectedPass) return unauthorized();
-
   const header = req.headers.get('authorization');
   if (!header?.startsWith('Basic ')) return unauthorized();
 
-  const [user, pass] = Buffer.from(header.slice(6), 'base64').toString().split(':');
-  if (user !== expectedUser || pass !== expectedPass) return unauthorized();
+  try {
+    const [user, pass] = Buffer.from(header.slice(6), 'base64').toString().split(':');
+    if (user !== env.ADMIN_USER || pass !== env.ADMIN_PASS) return unauthorized();
+  } catch {
+    return unauthorized();
+  }
 
   return NextResponse.next();
 }

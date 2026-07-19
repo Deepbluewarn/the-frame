@@ -1,7 +1,8 @@
 import { MetadataRoute } from 'next';
+import { config } from '@/config/env';
 
 export default function robots(): MetadataRoute.Robots {
-    const base = process.env.SITE_URL || 'http://localhost:3031';
+    const base = config.SITE_URL || 'http://localhost:3031';
     return {
         rules: {
             userAgent: '*',

@@ -38,6 +38,11 @@ export async function normalizeToJpeg(buffer: Buffer): Promise<Buffer> {
     return sharp(buffer).jpeg({ quality: 92 }).toBuffer();
 }
 
+export async function getDimensions(buffer: Buffer): Promise<{ width: number; height: number }> {
+    const meta = await sharp(buffer).metadata();
+    return { width: meta.width || 0, height: meta.height || 0 };
+}
+
 export function computeOrientation(width: number, height: number): Orientation {
     const ratio = width / height;
     if (ratio > 1.05) return 'landscape';

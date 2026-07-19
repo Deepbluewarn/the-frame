@@ -1,44 +1,30 @@
 import { S3 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { GetObjectCommand, CreateBucketCommand, HeadBucketCommand } from '@aws-sdk/client-s3';
+import { config } from '@/config/env';
 
-// MinIO / S3 공통 클라이언트. forcePathStyle=true는 MinIO 필수, S3에서도 문제 없음.
-export const s3 = new S3({
-    endpoint: process.env.S3_ENDPOINT,
-    region: process.env.S3_REGION || 'us-east-1',
-    credentials: {
-        accessKeyId: process.env.S3_ACCESS_KEY!,
-        secretAccessKey: process.env.S3_SECRET_KEY!,
-    },
-    forcePathStyle: true,
-});
-
-export const S3_BUCKET = process.env.S3_BUCKET!;
-
-// ponytail: 앱 시작 시 버킷 없으면 만든다. 프로덕션에선 미리 있는 게 자연스럽지만
-// dev/셀프호스트에선 한 줄로 해결되는 편의성이 낫다.
-let bucketEnsured = false;
-export async function ensureBucket() {
-    if (bucketEnsured) return;
-    try {
-        await s3.send(new HeadBucketCommand({ Bucket: S3_BUCKET }));
-    } catch {
-        try {
-            await s3.send(new CreateBucketCommand({ Bucket: S3_BUCKET }));
-        } catch (e) {
-            console.warn('버킷 생성 실패 (이미 있으면 무시):', (e as Error).message);
-        }
-    }
-    bucketEnsured = true;
+// 클라이언트는 lazy로 생성. 빌드 시점에 env 없어도 module import 성공.
+let _s3: S3 | null = null;
+export function getS3(): S3 {
+    if (_s3) return _s3;
+    _s3 = new S3({
+        endpoint: config.S3_ENDPOINT,
+        region: config.S3_REGION,
+        credentials: {
+            accessKeyId: config.S3_ACCESS_KEY,
+            secretAccessKey: config.S3_SECRET_KEY,
+        },
+        forcePathStyle: true,
+    });
+    return _s3;
 }
 
-// ponytail: 1시간 고정. 홈 revalidate 60초 대비 훨씬 여유. 만료 오차로 이미지 깨질 일 없음.
+// ponytail: 1시간 고정. 홈 revalidate 60초 대비 훨씬 여유.
 const PRESIGN_TTL = 60 * 60;
 
 export async function presign(s3_key: string): Promise<string> {
-    // ponytail: aws-sdk v3 타입 이슈 회피. 런타임 정상.
     // @ts-expect-error S3/S3Client 제네릭 mismatch
-    return await getSignedUrl(s3, new GetObjectCommand({ Bucket: S3_BUCKET, Key: s3_key }), { expiresIn: PRESIGN_TTL });
+    return await getSignedUrl(getS3(), new GetObjectCommand({ Bucket: config.S3_BUCKET, Key: s3_key }), { expiresIn: PRESIGN_TTL });
 }
 
 export async function attachUrls<T extends { s3_key: string; s3_key_thumb?: string; s3_key_medium?: string; url?: string; urlThumb?: string; urlMedium?: string }>(images: T[]): Promise<T[]> {
@@ -50,4 +36,19 @@ export async function attachUrls<T extends { s3_key: string; s3_key_thumb?: stri
         ]);
         return { ...img, url, urlThumb, urlMedium };
     }));
+}
+
+let bucketEnsured = false;
+export async function ensureBucket() {
+    if (bucketEnsured) return;
+    try {
+        await getS3().send(new HeadBucketCommand({ Bucket: config.S3_BUCKET }));
+    } catch {
+        try {
+            await getS3().send(new CreateBucketCommand({ Bucket: config.S3_BUCKET }));
+        } catch (e) {
+            console.warn('버킷 생성 실패 (이미 있으면 무시):', (e as Error).message);
+        }
+    }
+    bucketEnsured = true;
 }

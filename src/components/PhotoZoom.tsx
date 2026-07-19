@@ -2,22 +2,12 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Blurhash from './Blurhash';
+import {
+    computeZoomSteps, relFromPoint, relFromTouchDrag, transformString,
+    type Viewport, type Rel,
+} from '@/lib/zoomTransform';
 
-// 사진의 원본크기와 뷰포트를 비교해 줌 단계를 정한다.
-// step 0 = 뷰포트에 맞추기(fit), 마지막 step = 원본 100%.
-// 사진이 뷰포트보다 얼마나 큰지에 따라 단계 수가 자동 조정.
-function computeSteps(w: number, h: number, vw: number, vh: number): number[] {
-    const fit = Math.min(vw / w, vh / h, 1);
-    const ratio = 1 / fit; // 자연크기가 fit의 몇 배인지
-    let count: number;
-    if (ratio >= 4) count = 4;
-    else if (ratio >= 2.5) count = 3;
-    else if (ratio >= 1.5) count = 2;
-    else count = 1; // 확대 여지 없음
-    if (count === 1) return [fit];
-    // 등비 보간: step i → fit * (1/fit)^(i/(count-1))
-    return Array.from({ length: count }, (_, i) => fit * Math.pow(1 / fit, i / (count - 1)));
-}
+const VIEWPORT_PAD = 48;
 
 export default function PhotoZoom({
     src, zoomSrc, alt, width, height, blurhash,
@@ -31,21 +21,32 @@ export default function PhotoZoom({
     const [steps, setSteps] = useState<number[]>([1]);
     const [step, setStep] = useState(0);
     const [loaded, setLoaded] = useState(false);
-    const relRef = useRef({ x: 0.5, y: 0.5 });
+    const relRef = useRef<Rel>({ x: 0.5, y: 0.5 });
 
     // 하이드레이션 전에 로드 완료된 경우 onLoad가 안 걸림 → 마운트 시 체크
     useEffect(() => {
         if (previewRef.current?.complete && previewRef.current?.naturalWidth > 0) setLoaded(true);
     }, []);
 
+    const viewport = (): Viewport => ({
+        width: window.innerWidth,
+        height: window.innerHeight,
+        padding: VIEWPORT_PAD,
+    });
+
+    const applyTransform = (scale: number) => {
+        const img = imgRef.current;
+        if (!img) return;
+        img.style.transform = transformString(scale, relRef.current, width, height, viewport());
+    };
+
     const open = () => {
-        const s = computeSteps(width, height, window.innerWidth, window.innerHeight);
+        const s = computeZoomSteps(width, height, window.innerWidth, window.innerHeight);
         setSteps(s);
         setStep(0);
         relRef.current = { x: 0.5, y: 0.5 };
         const img = imgRef.current;
         if (img) {
-            // 초기 프레임: transition off → identity에서 튀지 않게
             img.style.transition = 'none';
             applyTransform(s[0]);
         }
@@ -55,22 +56,6 @@ export default function PhotoZoom({
         });
     };
     const close = () => dlgRef.current?.close();
-
-    // 뷰포트 가장자리에 여백. 코너 볼 때 이미지가 화면 끝에 붙지 않게 함.
-    const PAD = 48;
-
-    const applyTransform = (scale: number) => {
-        const img = imgRef.current;
-        if (!img) return;
-        const vw = window.innerWidth, vh = window.innerHeight;
-        const availW = vw - 2 * PAD, availH = vh - 2 * PAD;
-        const dw = width * scale, dh = height * scale;
-        const overflowX = Math.max(0, dw - availW);
-        const overflowY = Math.max(0, dh - availH);
-        const tx = overflowX > 0 ? PAD - overflowX * relRef.current.x : (vw - dw) / 2;
-        const ty = overflowY > 0 ? PAD - overflowY * relRef.current.y : (vh - dh) / 2;
-        img.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
-    };
 
     useEffect(() => {
         const onKey = (e: KeyboardEvent) => {
@@ -82,33 +67,23 @@ export default function PhotoZoom({
         return () => window.removeEventListener('keydown', onKey);
     }, []);
 
-    // step 변경 시: transition 잠깐 켜서 부드럽게, 끝나면 해제
+    // step 변경 시: transition 잠깐 켜서 부드럽게
     useEffect(() => {
         const img = imgRef.current;
         if (!img) return;
         img.style.transition = 'transform 200ms ease';
         applyTransform(steps[step]);
-        const clear = () => { img.style.transition = ''; };
-        const t = setTimeout(clear, 220);
+        const t = setTimeout(() => { img.style.transition = ''; }, 220);
         return () => clearTimeout(t);
     }, [step, steps]);
 
-    const updateRelFromPoint = (clientX: number, clientY: number) => {
-        const vw = window.innerWidth, vh = window.innerHeight;
-        const availW = vw - 2 * PAD, availH = vh - 2 * PAD;
-        relRef.current = {
-            x: Math.min(1, Math.max(0, (clientX - PAD) / availW)),
-            y: Math.min(1, Math.max(0, (clientY - PAD) / availH)),
-        };
+    const onMouseMove = (e: React.MouseEvent<HTMLDialogElement>) => {
+        relRef.current = relFromPoint(e.clientX, e.clientY, viewport());
         applyTransform(steps[step]);
     };
 
-    const onMouseMove = (e: React.MouseEvent<HTMLDialogElement>) => {
-        updateRelFromPoint(e.clientX, e.clientY);
-    };
-
-    // 모바일: 드래그 방식. 터치 시작 지점 + rel 기억, 이동량만큼 rel 반대로 조정.
-    const touchStartRef = useRef<{ x: number; y: number; relX: number; relY: number } | null>(null);
+    // 모바일 드래그: 시작 지점 + rel 기억, 이동량만큼 반대로.
+    const touchStartRef = useRef<{ x: number; y: number; rel: Rel } | null>(null);
 
     const onTouchStart = (e: React.TouchEvent<HTMLDialogElement>) => {
         e.stopPropagation();
@@ -116,25 +91,20 @@ export default function PhotoZoom({
         touchStartRef.current = {
             x: e.touches[0].clientX,
             y: e.touches[0].clientY,
-            relX: relRef.current.x,
-            relY: relRef.current.y,
+            rel: { ...relRef.current },
         };
     };
 
     const onTouchMove = (e: React.TouchEvent<HTMLDialogElement>) => {
         e.stopPropagation();
         if (e.touches.length !== 1 || !touchStartRef.current) return;
-        const start = touchStartRef.current;
-        const scale = steps[step];
-        const dw = width * scale, dh = height * scale;
-        const overflowX = Math.max(1, dw - (window.innerWidth - 2 * PAD));
-        const overflowY = Math.max(1, dh - (window.innerHeight - 2 * PAD));
-        const dx = e.touches[0].clientX - start.x;
-        const dy = e.touches[0].clientY - start.y;
-        relRef.current = {
-            x: Math.min(1, Math.max(0, start.relX - dx / overflowX)),
-            y: Math.min(1, Math.max(0, start.relY - dy / overflowY)),
-        };
+        const t = e.touches[0];
+        relRef.current = relFromTouchDrag(
+            touchStartRef.current.x, touchStartRef.current.y,
+            t.clientX, t.clientY,
+            touchStartRef.current.rel,
+            steps[step], width, height, viewport(),
+        );
         applyTransform(steps[step]);
     };
 
@@ -143,8 +113,7 @@ export default function PhotoZoom({
         touchStartRef.current = null;
     };
 
-    const onClickDialog = (e: React.MouseEvent) => {
-        // 마지막 단계면 닫기, 아니면 다음 단계
+    const onClickDialog = () => {
         if (step >= steps.length - 1) close();
         else setStep(s => s + 1);
     };

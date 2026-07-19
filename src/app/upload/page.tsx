@@ -5,31 +5,24 @@ import exifr from 'exifr';
 import { UploadAction } from '@/actions/upload/upload';
 import { UploadMeta } from '@/interface/Upload';
 import { Visibility } from '@/db/models/Image';
+import ExifBlock, { ExifDisplay } from '@/components/ExifBlock';
 
 type DraftStatus = 'pending' | 'uploading' | 'done' | 'error';
-type ClientExif = {
-    camera?: string;
-    lens?: string;
-    focalLength?: number;
-    aperture?: number;
-    shutterSpeed?: string;
-    iso?: number;
-    takenAt?: string;
-};
-type Draft = UploadMeta & {
+type Draft = Omit<UploadMeta, 'tags'> & {
     file: File;
     preview: string;
     key: string;
+    tagsInput: string;   // 원시 입력 유지 (공백/타이핑 도중 파싱하지 않음)
     status: DraftStatus;
     errorMsg?: string;
-    exif?: ClientExif;
+    exif?: ExifDisplay;
 };
 
 const MAX_SIZE = 300 * 1024 * 1024;
 const ALLOWED = /^image\/(jpeg|jpg|png|webp|avif|tiff|tif)$/;
 const EXIF_PICK = ['Make', 'Model', 'LensModel', 'FocalLength', 'FNumber', 'ExposureTime', 'ISO', 'DateTimeOriginal'];
 
-async function readExif(file: File): Promise<ClientExif | undefined> {
+async function readExif(file: File): Promise<ExifDisplay | undefined> {
     try {
         const data: any = await exifr.parse(file, { pick: EXIF_PICK });
         if (!data) return undefined;
@@ -62,34 +55,10 @@ function makeDraft(file: File): Draft {
         originalFileName: file.name,
         name: file.name.replace(/\.[^.]+$/, ''),
         description: '',
-        tags: [],
+        tagsInput: '',
         visibility: 'public',
         status: 'pending',
     };
-}
-
-function ExifPreview({ exif }: { exif?: ClientExif }) {
-    if (!exif) return <p className="text-[10px] text-neutral-400 dark:text-neutral-600">EXIF 없음</p>;
-    const rows = [
-        ['촬영일', exif.takenAt],
-        ['카메라', exif.camera],
-        ['렌즈', exif.lens],
-        ['초점거리', exif.focalLength ? `${exif.focalLength}mm` : undefined],
-        ['조리개', exif.aperture ? `f/${exif.aperture}` : undefined],
-        ['셔터', exif.shutterSpeed],
-        ['ISO', exif.iso],
-    ].filter(([, v]) => v !== undefined && v !== null && v !== '');
-    if (rows.length === 0) return <p className="text-[10px] text-neutral-400 dark:text-neutral-600">EXIF 없음</p>;
-    return (
-        <dl className="text-[10px] space-y-0.5 text-neutral-400 dark:text-neutral-500">
-            {rows.map(([k, v]) => (
-                <div key={k as string} className="flex gap-2">
-                    <dt className="w-12 shrink-0 text-neutral-300 dark:text-neutral-600">{k}</dt>
-                    <dd>{v as any}</dd>
-                </div>
-            ))}
-        </dl>
-    );
 }
 
 export default function UploadPage() {
@@ -164,7 +133,7 @@ export default function UploadPage() {
                 originalFileName: d.originalFileName,
                 name: d.name,
                 description: d.description,
-                tags: d.tags,
+                tags: d.tagsInput.split(/\s+/).filter(Boolean),
                 visibility: d.visibility,
             }];
             try {
@@ -232,7 +201,7 @@ export default function UploadPage() {
                                         <div className="absolute inset-0 flex items-center justify-center bg-black/60 text-red-400 text-xs" title={d.errorMsg}>실패</div>
                                     )}
                                 </button>
-                                <ExifPreview exif={d.exif} />
+                                <ExifBlock exif={d.exif} showTakenAt />
                             </div>
                             <div className="flex-1 space-y-2">
                                 <input
@@ -251,8 +220,8 @@ export default function UploadPage() {
                                 />
                                 <input
                                     type="text"
-                                    value={d.tags.join(' ')}
-                                    onChange={e => patch(d.key, { tags: e.currentTarget.value.split(/\s+/).filter(Boolean) })}
+                                    value={d.tagsInput}
+                                    onChange={e => patch(d.key, { tagsInput: e.currentTarget.value })}
                                     placeholder="태그 (공백 구분)"
                                     className="w-full text-xs bg-transparent border-b border-neutral-200 dark:border-neutral-700 pb-1 focus:border-neutral-500 dark:focus:border-neutral-400 outline-none"
                                 />
