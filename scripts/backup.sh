@@ -5,6 +5,9 @@
 
 set -euo pipefail
 
+# cron 환경에서도 사용자 로컬 바이너리 찾도록
+export PATH="$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin"
+
 DIR="$(cd "$(dirname "$0")/.." && pwd)"
 STAMP="$(date +%Y%m%d)"
 BACKUP_ROOT="${BACKUP_ROOT:-$HOME/backups/the-frame}"
