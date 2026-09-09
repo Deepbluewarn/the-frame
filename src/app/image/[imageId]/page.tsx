@@ -18,11 +18,13 @@ export const dynamic = 'force-dynamic';
 const getImage = cache(async (id: string) => actionGetImageById(id));
 
 export async function generateMetadata({ params }: { params: { imageId: string } }): Promise<Metadata> {
-    const noindex = { robots: { index: false, follow: false } };
-    if (!isValidObjectId(params.imageId)) return noindex;
+    // 여기서 notFound()를 던져야 404 상태로 응답됨. Page에서만 던지면 이미 head 스트리밍이
+    // 시작된 뒤라 200 + noindex(soft 404)가 나가고, 서치 콘솔이 "noindex로 제외"로 잡는다.
+    if (!isValidObjectId(params.imageId)) notFound();
     const image = await getImage(params.imageId);
-    if (!image) return noindex;
-    if (image.visibility === 'private') return noindex;
+    if (!image) notFound();
+    // private은 admin에게만 조회되므로 404 대신 noindex.
+    if (image.visibility === 'private') return { robots: { index: false, follow: false } };
 
     const tagsPart = image.tags?.length ? `태그: ${image.tags.join(', ')}` : '';
     const descBase = image.description || image.title;
