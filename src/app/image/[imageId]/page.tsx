@@ -1,8 +1,8 @@
-import { actionGetImageById, actionGetSurroundingImagesById, actionHasLiked } from "@/actions/image";
+import { actionGetSurroundingImagesById, actionHasLiked } from "@/actions/image";
+import { getImage } from './getImage';
 import { notFound } from 'next/navigation';
 import { isValidObjectId } from 'mongoose';
 import { Metadata } from "next";
-import { cache } from 'react';
 import LikeButton from "@/components/LikeButton";
 import ShareButton from "@/components/ShareButton";
 import PhotoNavigator from "@/components/PhotoNavigator";
@@ -14,12 +14,8 @@ import type { ImageInterface } from "@/db/models/Image";
 
 export const dynamic = 'force-dynamic';
 
-// generateMetadata와 Page가 같은 요청에서 이 함수를 호출하면 캐시되어 DB 1회만 조회.
-const getImage = cache(async (id: string) => actionGetImageById(id));
-
 export async function generateMetadata({ params }: { params: { imageId: string } }): Promise<Metadata> {
-    // 여기서 notFound()를 던져야 404 상태로 응답됨. Page에서만 던지면 이미 head 스트리밍이
-    // 시작된 뒤라 200 + noindex(soft 404)가 나가고, 서치 콘솔이 "noindex로 제외"로 잡는다.
+    // 존재하지 않는 경우의 404는 layout.tsx가 처리한다(스트리밍 시작 전이어야 하므로).
     if (!isValidObjectId(params.imageId)) notFound();
     const image = await getImage(params.imageId);
     if (!image) notFound();
